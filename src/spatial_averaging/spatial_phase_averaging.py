@@ -40,11 +40,13 @@ class SpatialPhaseAveraging:
     
     def _cplx_avg(self):
         cplx_avg = self.holo_list[0].cplx_image(self.use_amp)
+        cplx_avg /= self.background
         for i in range(1, self.num_pos):
             cplx_image = self.holo_list[i].cplx_image(self.use_amp)
             cplx_image /= self.background
             cplx_image = self._shift_image(cplx_avg, cplx_image)
             cplx_image = self._subtract_phase_offset(cplx_image, cplx_avg)
+            cplx_avg += cplx_image
         return cplx_avg/self.num_pos
     
     def _generate_holo_list(self):

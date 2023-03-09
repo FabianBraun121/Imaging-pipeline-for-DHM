@@ -42,3 +42,10 @@ for loc in all_loc:
 
 end = time.time()
 print((end-start)//60, ' min')
+
+#%%
+import matplotlib.pyplot as plt
+
+plt.figure()
+plt.imshow(ph)
+
