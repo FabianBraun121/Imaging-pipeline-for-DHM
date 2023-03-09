@@ -122,4 +122,5 @@ for i in range(results.shape[0]):
     plt.plot(np.arange(-3,1,0.1), results[i], label=f"tolerance {tolerance[i]}, score: {score[i]}, avg time: {duration.mean(axis=1)[i]:.2f}")
 plt.legend()
 plt.title("tolerance with 40 different starting positions")
+plt.savefig(save_path+"/optimizing_tolerance", dpi=300)
 plt.show()

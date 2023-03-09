@@ -58,7 +58,7 @@ host.OpenIntensityWin()
 host.OpenHoloWin()
 fname = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\Sample2x2x36_forFabian\2023-02-28 10-06-34\00001\00001_00001\Holograms\00000_holo.tif'
 host.LoadHolo(fname,1)
-
+#%%
 def subtract_plane(field, plane_degree):
     X1, X2 = np.mgrid[:field.shape[0], :field.shape[1]]
     X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
@@ -123,5 +123,10 @@ for i in range(results.shape[0]):
     plt.plot(np.arange(-3,1,0.1), results[i], label=f"{optimizers[i]}, score: {score[i]}, avg time: {duration.mean(axis=1)[i]:.2f}")
 plt.legend()
 plt.title("optimizing methods with 40 different starting positions")
+plt.savefig(save_path+"/optimizing_mothods", dpi=300)
 plt.show()
+
+#%%
+host.SetRecDistCM(0.1)
+host.OnDistanceChange()
 
