@@ -206,6 +206,9 @@ class Hologram:
         grad_y = scipy.ndimage.sobel(gray_image, axis=1)
         # Calculate std squared sobel sharpness score
         return np.std(grad_x ** 2 + grad_y ** 2)
+        
+    def get_cplx_image(self):
+        return self.cplx_image.copy()
     
     def header(self):
         """
@@ -291,7 +294,7 @@ class Hologram:
 
 class SpatialPhaseAveraging:
     def __init__(self, loc_dir, timestep, koala_host, focus_method='std_sobel_squared', optimizing_method= 'Powell',
-                 tolerance=None, plane_basis_vectors='Polynomial', plane_fit_order=3, use_amp=True):
+                 tolerance=None, plane_basis_vectors='Polynomial', plane_fit_order=5, use_amp=True):
         self.loc_dir = loc_dir
         self.timestep = timestep
         self.koala_host = koala_host
@@ -304,35 +307,33 @@ class SpatialPhaseAveraging:
         self.x0_guess = None
         self.pos_list = [ f.name for f in os.scandir(loc_dir) if f.is_dir()]
         self.num_pos = len(self.pos_list)
+        self.focus_score_list = []
         self.holo_list = self._generate_holo_list()
         self.holo_list_in_use = self.holo_list
-        self.focus_score_list = []
         self.background = self._background()
         self.cplx_avg = self._cplx_avg()
     
     
     def _background(self):
-        background = self.holo_list_in_use[0].cplx_image
+        background = self.holo_list_in_use[0].get_cplx_image()
         background = self._subtract_bacterias(background)
-        self.focus_score_list.append(self.holo_list_in_use[0].focus_score)
-        for i in range(1, self.num_pos):
-            cplx_image = self.holo_list_in_use[i].cplx_image
-            self.focus_score_list.append(self.holo_list_in_use[i].focus_score)
+        for i in range(1, len(self.holo_list_in_use)):
+            cplx_image = self.holo_list_in_use[i].get_cplx_image()
             cplx_image = self._subtract_phase_offset(cplx_image, background)
             cplx_image = self._subtract_bacterias(cplx_image)
             background += cplx_image
-        return background/self.num_pos
+        return background/len(self.holo_list_in_use)
     
     def _cplx_avg(self):
-        cplx_avg = self.holo_list_in_use[0].cplx_image
+        cplx_avg = self.holo_list_in_use[0].get_cplx_image()
         cplx_avg /= self.background
-        for i in range(1, self.num_pos):
-            cplx_image = self.holo_list_in_use[i].cplx_image
+        for i in range(1, len(self.holo_list_in_use)):
+            cplx_image = self.holo_list_in_use[i].get_cplx_image()
             cplx_image /= self.background
             cplx_image = self._shift_image(cplx_avg, cplx_image)
             cplx_image = self._subtract_phase_offset(cplx_image, cplx_avg)
             cplx_avg += cplx_image
-        return cplx_avg/self.num_pos
+        return cplx_avg/len(self.holo_list_in_use)
     
     def _generate_holo_list(self):
         holo_list = []
@@ -343,6 +344,7 @@ class SpatialPhaseAveraging:
                                  x0=self.x0_guess, plane_basis_vectors=self.plane_basis_vectors, plane_fit_order=self.plane_fit_order)
             # first guess is the focus point of the last image
             self.x0_guess = holo.focus
+            self.focus_score_list.append(holo.focus_score)
             holo_list.append(holo)
         return holo_list
     
@@ -350,12 +352,12 @@ class SpatialPhaseAveraging:
         return np.absolute(self.cplx_avg)
     
     def get_cplx_avg(self):
-        return self.cplx_avg
+        return self.cplx_avg.copy()
     
     def get_mass_avg(self):
         ph = np.angle(self.cplx_avg)
-        cut_off = 0.15
-        return np.sum(ph[ph<cut_off])
+        cut_off = 0.2
+        return np.sum(ph[cut_off<ph])
     
     def get_phase_avg(self):
         return np.angle(self.cplx_avg)
@@ -377,7 +379,7 @@ class SpatialPhaseAveraging:
     def _subtract_bacterias(self, cplx_image):
         # subtracts pixel  that are far away from the mean and replaces them with the mean of the image
         # cut off value is determined by hand and has to be reestimated for different use cases
-        cut_off = 0.15
+        cut_off = 0.2
         ph = np.angle(cplx_image)
         ph[cut_off<ph] = np.mean(ph[ph<cut_off])
         return np.absolute(cplx_image)*np.exp(1j*ph)
@@ -407,12 +409,14 @@ four_square = [0,1,2,3,5,6,7,8,10,11,12,13,15,16,17,18]
 edges = [0,1,2,3,4,5,9,10,14,15,19,20,21,22,23,24]
 three_square_outer_every_second = [0,2,4,6,7,8,10,11,12,13,14,16,17,18,20,22,24]
 two_square_and_edges = [0,3,6,7,11,12,15,18]
-num_images = 100
+num_images = 2
+num_images_saved = 2
 holos_in_use = [all_holos, every_secand, X_form, tree_square, four_square, edges, three_square_outer_every_second, two_square_and_edges]
-holos_name = ['all_holos', 'every_secand', 'X_form', 'tree_square', 'four_square', 'edges', 'three_square_outer_every_second', 'two_square_and_edges']
+holos_name_list = ['all_holos', 'every_secand', 'X_form', 'tree_square', 'four_square', 'edges', 'three_square_outer_every_second', 'two_square_and_edges']
 std_sobel_squared = np.zeros((num_images,len(holos_in_use)))
 mass = np.zeros((num_images,len(holos_in_use)))
 focus_score_lists = []
+exmaplary_images = np.ndarray((num_images_saved,len(holos_in_use), 800, 800))
 
 for i in range(num_images):
     l = np.random.randint(len(all_loc))
@@ -425,12 +429,43 @@ for i in range(num_images):
         spa.restrict_holo_use(holo_in_use)
         averaged_image = spa.get_cplx_avg()
         ph = get_result_unwrap(np.angle(averaged_image))
+        if i<num_images_saved:
+            exmaplary_images[i,j] = ph
         std_sobel_squared[i,j] = evaluate_std_sobel_squared(ph)
         mass[i,j] = spa.get_mass_avg()
     print(i, " done")
 
+focus_score = np.array(focus_score_lists)
+holos_name = np.array(holos_name_list)
+np.save(save_path + r'\std_sobel_squared', std_sobel_squared)
+np.save(save_path + r'\mass', mass)
+np.save(save_path + r'\focus_score', focus_score)
+np.save(save_path + r'\holos_name', holos_name)
+np.save(save_path + r'\exmaplary_images', exmaplary_images)
 #%%
-plt.figure()
-plt.bar(holos_name, std_sobel_squared.mean(axis=0))
+std_sobel_squared = np.load(save_path + r'\std_sobel_squared.npy')
+mass = np.load(save_path + r'\mass.npy')
+focus_score = np.load(save_path + r'\focus_score.npy')
+holos_name = np.load(save_path + r'\holos_name.npy')
+exmaplary_images = np.load(save_path + r'\exmaplary_images.npy')
 
+plt.figure('sharpness comparison')
+plt.bar(holos_name, std_sobel_squared.mean(axis=0))
+plt.savefig(save_path+"/sharpness_comparison", dpi=300)
+plt.show()
+
+plt.figure('mass comparison')
+plt.bar(holos_name, mass.mean(axis=0))
+plt.savefig(save_path+"/mass_comparison", dpi=300)
+plt.show()
+
+#%%
+image = 0
+horizontal_images = len(holos_in_use)//2
+vertical_images = 2
+fig , ax = plt.subplots(vertical_images,horizontal_images)
+for i in range(vertical_images):
+    for j in range(horizontal_images):
+        ax[i,j].imshow(exmaplary_images[image, i*horizontal_images+j])
+        ax[i,j].set_title(holos_name[i*horizontal_images+j])
 

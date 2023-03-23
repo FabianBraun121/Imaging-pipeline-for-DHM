@@ -84,6 +84,8 @@ def sharpness_squared_std(gray_image):
 def squared_std(image):
     return np.std(image**2)
 
+degree = 5
+
 #%%
 start = time.time()
 for i in range(100):
@@ -91,7 +93,7 @@ for i in range(100):
     host.OnDistanceChange()
     image_values = host.GetIntensity32fImage()
 end = time.time()
-print('Saving and reading an image in Koala takes',np.round((end-start)*10,1), 'ms per image')
+print('Saving and reading an image in Koala takes',np.round((end-start),10), 'ms per image')
 #%%
 start = time.time()
 for i in range(100):
@@ -100,54 +102,54 @@ for i in range(100):
     host.SaveImageFloatToFile(4,r'C:\Master_Thesis_Fabian_Braun\Data\test.bin',True)
     image_values, header = binkoala.read_mat_bin(r'C:\Master_Thesis_Fabian_Braun\Data\test.bin')
 end = time.time()
-print('Saving and reading an image in Koala takes',np.round((end-start)*10,1), 'ms per image')
+print('Saving and reading an image in Koala takes',np.round((end-start),10), 'ms per image')
 #%%
 host.SetRecDistCM(-2.3)
 host.OnDistanceChange()
 host.SaveImageFloatToFile(4,r'C:\Master_Thesis_Fabian_Braun\Data\test.bin',True)
 image_values, header = binkoala.read_mat_bin(r'C:\Master_Thesis_Fabian_Braun\Data\test.bin')
 start = time.time()
-for i in range(100):
-    X = generate_X(image_values, 3)
+for i in range(10):
+    X = generate_X(image_values, degree)
 end = time.time()
-print('Generating the X plane with self written function takes', np.round((end-start)*10,1), 'ms per image')
+print('Generating the X plane with self written function takes', np.round((end-start)*100,1), 'ms per image')
 #%%
 start = time.time()
-for i in range(100):
+for i in range(10):
     X1, X2 = np.mgrid[:800, :800]
     X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
-    X = PolynomialFeatures(degree=3, include_bias=False).fit_transform(X)
+    X = PolynomialFeatures(degree=degree, include_bias=False).fit_transform(X)
 end = time.time()
-print('Generating the X plane with sklearn function takes',np.round((end-start)*10,1), 'ms per image')
+print('Generating the X plane with sklearn function takes',np.round((end-start)*100,1), 'ms per image')
 #%%
 start = time.time()
-for i in range(100):
-    image_sklearn = subtract_plane_sklearn(image_values, 3)
+for i in range(10):
+    image_sklearn = subtract_plane_sklearn(image_values, degree)
 end = time.time()
-print('Subtracting plane with sklearn function takes', np.round((end-start)*10,1), 'ms per image')
+print('Subtracting plane with sklearn function takes', np.round((end-start)*100,1), 'ms per image')
 #%%
 start = time.time()
-for i in range(100):
-    image_hand = subtract_plane_by_hand(image_values, 3)
+for i in range(10):
+    image_hand = subtract_plane_by_hand(image_values, degree)
 end = time.time()
-print('Subtracting plane with self written function takes', np.round((end-start)*10,1), 'ms per image')
+print('Subtracting plane with self written function takes', np.round((end-start)*100,1), 'ms per image')
 #%%
-X, pseudoinverse = generate_X_and_pseudoinverse(image_values, 3)
+X, pseudoinverse = generate_X_and_pseudoinverse(image_values, degree)
 start = time.time()
-for i in range(100):
-    image_hand_precomputed = subtract_plane_by_hand_X_precomputed(X, pseudoinverse, image_values, 3)
+for i in range(10):
+    image_hand_precomputed = subtract_plane_by_hand_X_precomputed(X, pseudoinverse, image_values, degree)
 end = time.time()
-print('Subtracting plane with self written function and precomputed pseudoinverse takes', np.round((end-start)*10,1), 'ms per image')
+print('Subtracting plane with self written function and precomputed pseudoinverse takes', np.round((end-start)*100,1), 'ms per image')
 #%%
 start = time.time()
-for i in range(100):
+for i in range(10):
     __ = sharpness_squared_std(image_hand_precomputed)
 end = time.time()
-print('Sharpness squared std algorithm takes', np.round((end-start)*10,1), 'ms per image')
+print('Sharpness squared std algorithm takes', np.round((end-start)*100,1), 'ms per image')
 
 #%%
 start = time.time()
-for i in range(100):
+for i in range(10):
     __ = squared_std(image_hand_precomputed)
 end = time.time()
-print('Image squared std algorithm takes', np.round((end-start)*10,1), 'ms per image')
+print('Image squared std algorithm takes', np.round((end-start)*100,1), 'ms per image')

@@ -30,7 +30,7 @@ class Hologram:
         self.cplx_image = None # as soon as the focus point is found this function is evaluated
     
     def calculate_focus(self, koala_host, focus_method='sharpness_squared_std', optimizing_method= 'Powell', tolerance=None,
-                        x0=None, plane_basis_vectors='Polynomial', plane_fit_order=3, use_amp=True):
+                        x0=None, plane_basis_vectors='Polynomial', plane_fit_order=5, use_amp=True):
         """
         
         Parameters
@@ -177,6 +177,22 @@ class Hologram:
         grad_y = scipy.ndimage.sobel(gray_image, axis=1)
         # Calculate std squared sobel sharpness score
         return np.std(grad_x ** 2 + grad_y ** 2)
+    
+    def get_cplx_image(self):
+        """
+
+        Returns
+        -------
+        numpy array
+            DESCRIPTION. complex image
+
+        Method Description
+        -------
+        returns the complex image at the focus point. Function should be used instead of obj.cplx_image
+        since this copies the image. Otherwise image changed outside the function would influence cplx_image
+        
+        """
+        return self.cplx_image.copy()
     
     def header(self):
         """

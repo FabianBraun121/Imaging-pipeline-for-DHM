@@ -28,6 +28,7 @@ fname_example_holo = data_path + r'\00001_00001\Holograms\00000_holo.tif'
 ConfigNumber = 221
 host = connect_to_remote_koala(ConfigNumber)
 
+#%%
 def generate_X_and_pseudoinverse(plane_degree):
     X1, X2 = np.mgrid[:800, :800]
     X = np.hstack((X1.reshape(-1,1), X2.reshape(-1,1)))
@@ -109,8 +110,20 @@ plt.legend(fontsize=12)
 plt.savefig(save_path+"/function_evaluation_sharpness", dpi=300)
 #%%
 spa = SpatialPhaseAveraging(data_path, 0, host)
-#%%
 plt.figure('Averaged Image')
 plt.title('averaged image')
 plt.imshow(np.angle(spa.cplx_avg))
 plt.savefig(save_path+"/averaged_image", dpi=300)
+
+#%%
+horizontal_images = 2
+vertical_images = 2
+image_offset = 4
+fig , ax = plt.subplots(vertical_images,horizontal_images)
+for i in range(vertical_images):
+    for j in range(horizontal_images):
+        ax[i,j].imshow(np.angle(spa.holo_list[image_offset+i*horizontal_images+j].get_cplx_image()))
+        ax[i,j].set_title(spa.pos_list[image_offset+i*horizontal_images+j])
+
+
+

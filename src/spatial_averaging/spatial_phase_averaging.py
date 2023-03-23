@@ -12,7 +12,7 @@ from scipy import ndimage
 
 class SpatialPhaseAveraging:
     def __init__(self, loc_dir, timestep, koala_host, focus_method='sharpness_squared_std', optimizing_method= 'Powell',
-                 tolerance=None, plane_basis_vectors='Polynomial', plane_fit_order=2, use_amp=True):
+                 tolerance=None, plane_basis_vectors='Polynomial', plane_fit_order=5, use_amp=True):
         self.loc_dir = loc_dir
         self.timestep = timestep
         self.koala_host = koala_host
@@ -31,20 +31,20 @@ class SpatialPhaseAveraging:
     
     
     def _background(self):
-        background = self.holo_list[0].cplx_image
+        background = self.holo_list[0].get_cplx_image()
         background = self._subtract_bacterias(background)
         for i in range(1, self.num_pos):
-            cplx_image = self.holo_list[i].cplx_image
+            cplx_image = self.holo_list[i].get_cplx_image()
             cplx_image = self._subtract_phase_offset(cplx_image, background)
             cplx_image = self._subtract_bacterias(cplx_image)
             background += cplx_image
         return background/self.num_pos
     
     def _cplx_avg(self):
-        cplx_avg = self.holo_list[0].cplx_image
+        cplx_avg = self.holo_list[0].get_cplx_image()
         cplx_avg /= self.background
         for i in range(1, self.num_pos):
-            cplx_image = self.holo_list[i].cplx_image
+            cplx_image = self.holo_list[i].get_cplx_image()
             cplx_image /= self.background
             cplx_image = self._shift_image(cplx_avg, cplx_image)
             cplx_image = self._subtract_phase_offset(cplx_image, cplx_avg)
@@ -67,7 +67,7 @@ class SpatialPhaseAveraging:
         return np.absolute(self.cplx_avg)
     
     def get_cplx_avg(self):
-        return self.cplx_avg
+        return self.cplx_avg.copy()
     
     def get_phase_avg(self):
         return np.angle(self.cplx_avg)
