@@ -153,4 +153,4 @@ cython_debug/
 
 # Manual addition
 data/
-*.npy
+*images.npy
