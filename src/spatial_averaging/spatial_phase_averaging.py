@@ -11,7 +11,7 @@ from skimage.registration import phase_cross_correlation
 from scipy import ndimage
 
 class SpatialPhaseAveraging:
-    def __init__(self, loc_dir, timestep, koala_host, focus_method='Max_std_of_phase_squard', optimizing_method= 'Powell',
+    def __init__(self, loc_dir, timestep, koala_host, focus_method='sharpness_squared_std', optimizing_method= 'Powell',
                  tolerance=None, plane_basis_vectors='Polynomial', plane_fit_order=2, use_amp=True):
         self.loc_dir = loc_dir
         self.timestep = timestep
@@ -31,18 +31,20 @@ class SpatialPhaseAveraging:
     
     
     def _background(self):
-        background = self.holo_list[0].cplx_image(self.use_amp)
+        background = self.holo_list[0].cplx_image
+        background = self._subtract_bacterias(background)
         for i in range(1, self.num_pos):
-            cplx_image = self.holo_list[i].cplx_image(self.use_amp)
+            cplx_image = self.holo_list[i].cplx_image
             cplx_image = self._subtract_phase_offset(cplx_image, background)
+            cplx_image = self._subtract_bacterias(cplx_image)
             background += cplx_image
         return background/self.num_pos
     
     def _cplx_avg(self):
-        cplx_avg = self.holo_list[0].cplx_image(self.use_amp)
+        cplx_avg = self.holo_list[0].cplx_image
         cplx_avg /= self.background
         for i in range(1, self.num_pos):
-            cplx_image = self.holo_list[i].cplx_image(self.use_amp)
+            cplx_image = self.holo_list[i].cplx_image
             cplx_image /= self.background
             cplx_image = self._shift_image(cplx_avg, cplx_image)
             cplx_image = self._subtract_phase_offset(cplx_image, cplx_avg)
@@ -55,7 +57,7 @@ class SpatialPhaseAveraging:
             fname = self.loc_dir + os.sep + pos + os.sep + "Holograms" + os.sep + str(self.timestep).zfill(5) + "_holo.tif"
             holo = Hologram(fname)
             holo.calculate_focus(self.koala_host, focus_method=self.focus_method, optimizing_method=self.optimizing_method, tolerance=self.tolerance,
-                                 x0=self.x0_guess, plane_basis_vectors=self.plane_basis_vectors, plane_fit_order=self.plane_fit_order)
+                                 x0=self.x0_guess, plane_basis_vectors=self.plane_basis_vectors, plane_fit_order=self.plane_fit_order, use_amp= self.use_amp)
             # first guess is the focus point of the last image
             self.x0_guess = holo.focus
             holo_list.append(holo)
@@ -79,6 +81,14 @@ class SpatialPhaseAveraging:
         imaginary = ndimage.shift(np.imag(moving_image), shift=shiftVector, mode='wrap')
         return real+complex(0.,1.)*imaginary
     
+    def _subtract_bacterias(self, cplx_image):
+        # subtracts pixel  that are far away from the mean and replaces them with the mean of the image
+        # cut off value is determined by hand and has to be reestimated for different use cases
+        cut_off = 0.15
+        ph = np.angle(cplx_image)
+        ph[cut_off<ph] = np.mean(ph[ph<cut_off])
+        return np.absolute(cplx_image)*np.exp(1j*ph)
+        
     def _subtract_phase_offset(self, new, avg):
         z= np.angle(np.multiply(new,np.conj(avg))) #phase differenc between actual phase and avg_cplx phase
         #measure offset using the mode of the histogram, instead of mean,better for noisy images (rough sample)

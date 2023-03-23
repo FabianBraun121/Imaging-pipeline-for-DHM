@@ -1,18 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Mar  8 11:11:56 2023
+Created on Wed Mar 22 11:00:06 2023
 
 @author: SWW-Bc20
 """
 
-"""
-summary of results:
-No matter the tolerance the quality of the algorithm is good enough. The fastest results came 
-from a tolerance of 0.01. In tests with "good" starting positions it takes between 1 and 2 seconds.
-Arguably the algorithm with standard options (None) could be more robust. It will have to be decided
-on a later point wheater speed is more important than a possible loss of robustness.
-
-"""
 import os
 os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging')
 import clr
@@ -23,16 +15,16 @@ from scipy.optimize import minimize, Bounds
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 import matplotlib.pyplot as plt
-from utils import connect_to_remote_koala
 import time
 import scipy.ndimage
 import warnings
 warnings.filterwarnings("ignore")
+from utils import connect_to_remote_koala
 
-save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\optimizer_tolerance'
+save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\optimizer_bounds'
 if not os.path.exists(save_path):
     os.makedirs(save_path)
-tolerance = [1e-1, 1e-2, 1e-3, 1e-4, 1e-5, 1e-6, 1e-7, 1e-8, None]
+bound_dists = [5, 2.5, 1.25, 0.6, 0.3, 0.15, 0.075, None]
 
 #%%
 ########################## start Koala and define functions ##########################
@@ -78,12 +70,11 @@ def sharpness_squared_std(gray_image):
     # Calculate gradient magnitude using Sobel filter
     grad_x = scipy.ndimage.sobel(gray_image, axis=0)
     grad_y = scipy.ndimage.sobel(gray_image, axis=1)
-    grad_mag = grad_x ** 2 + grad_y ** 2
+    grad_mag = np.sqrt(grad_x ** 2 + grad_y ** 2)
     
     # Calculate sharpness score as the std gradient magnitude
-    sharpness = np.std(grad_mag)
+    sharpness = np.std(grad_mag**4)
     return sharpness
-
 
 #%%
 ########################## calculate whole function space ##########################
@@ -101,20 +92,24 @@ print(end-start)
 #%%
 ########################## run test on different optimizing methods, save results ##########################
 starts = np.arange(-3,1,0.1)
-results = np.ndarray((len(tolerance), len(starts)))
-duration = np.ndarray((len(tolerance), len(starts)))
-xnfev = np.ndarray((len(tolerance), len(starts)))
-bounds = Bounds(lb=-3, ub=-1, keep_feasible=False)
-for i in range(len(tolerance)):
+best = -2.31
+results = np.ndarray((len(bound_dists), len(starts)))
+duration = np.ndarray((len(bound_dists), len(starts)))
+xnfev = np.ndarray((len(bound_dists), len(starts)))
+for i, bound_dist in enumerate(bound_dists):
     for j in range(len(starts)):
+        if bound_dist==None:
+            bounds=None
+        else:
+            bounds = Bounds(lb=best-bound_dist, ub=best+bound_dist, keep_feasible=False)
         start = time.time()
-        res = minimize(evaluate_sharpness_squared_std, [starts[j]], bounds=bounds, method='Powell', tol=tolerance[i])
+        res = minimize(evaluate_sharpness_squared_std, [starts[j]], method='Powell', bounds=bounds)
         results[i,j] = res.x[0]
         xnfev[i,j] = res.nfev
         end = time.time()
         duration[i,j] = end-start
         print(j, 'done')
-    print(tolerance[i], ' done')
+    print(bound_dist, ' done')
 np.save(save_path+'/results', results)
 np.save(save_path+'/duration', duration)
 np.save(save_path+'/xnfev', xnfev)
@@ -124,43 +119,16 @@ x = np.load(save_path+'/x.npy')
 y = np.load(save_path+'/y.npy')
 results = np.load(save_path+'/results.npy')
 duration = np.load(save_path+'/duration.npy')
-xnfev = np.load(save_path+'/xnfev.npy')
 
 #%%
 ########################## plot ##########################
 score = (np.abs(results-x[np.argmin(y)])<0.01).sum(axis=1)
 plt.figure()
 for i in range(results.shape[0]):
-    plt.plot(np.arange(-3,1,0.1), results[i], label=f"tolerance {tolerance[i]}, score: {score[i]}, avg time: {duration.mean(axis=1)[i]:.2f}, avg evaluations: {xnfev.mean(axis=1)[i]:.2f}")
+    plt.plot(np.arange(-3,1,0.1), results[i], label=f"tolerance {bound_dists[i]}, score: {score[i]}, avg time: {duration.mean(axis=1)[i]:.2f}, avg evaluations: {xnfev.mean(axis=1)[i]:.2f}")
 plt.legend()
 plt.title("tolerance with 40 different starting positions")
-plt.savefig(save_path+"/optimizing_tolerance", dpi=300)
+plt.savefig(save_path+"/optimizing_bounds", dpi=300)
 plt.show()
-
 #%%
-host.SetRecDistCM(-2.31)
-host.OnDistanceChange()
-host.SaveImageFloatToFile(4,r'C:\Master_Thesis_Fabian_Braun\Data\test.bin',True)
-image_values, header = binkoala.read_mat_bin(r'C:\Master_Thesis_Fabian_Braun\Data\test.bin')
-image_values = subtract_plane(X, X_pseudoinverse, image_values)
-plt.figure('In Focus')
-plt.title('bacteria in focus')
-plt.imshow(image_values)
-
-host.SetRecDistCM(-2.0)
-host.OnDistanceChange()
-host.SaveImageFloatToFile(4,r'C:\Master_Thesis_Fabian_Braun\Data\test.bin',True)
-image_values, header = binkoala.read_mat_bin(r'C:\Master_Thesis_Fabian_Braun\Data\test.bin')
-image_values = subtract_plane(X, X_pseudoinverse, image_values)
-plt.figure('Out of Focus')
-plt.title('bacteria out of focus')
-plt.imshow(image_values)
-
-plt.figure("sharpness evaluation")
-plt.title("function evaluation sharpness")
-plt.plot(x,y, label='sharpness =\n-std(sobel_kernel(image(d)))**2)')
-plt.plot([-2.31,-2.31],[-0.036, -0.024], 'g')
-plt.plot([-2.0,-2.0],[-0.036, -0.024], 'r')
-plt.xlabel('focus point distance d [cm]')
-plt.legend(fontsize=12)
-
+plt.plot(x,y)

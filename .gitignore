@@ -153,3 +153,4 @@ cython_debug/
 
 # Manual addition
 data/
+*.npy

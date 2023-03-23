@@ -26,6 +26,7 @@ from sklearn.preprocessing import PolynomialFeatures
 import matplotlib.pyplot as plt
 import time
 import warnings
+import scipy.ndimage
 warnings.filterwarnings("ignore")
 
 save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\optimizer_methods'
@@ -40,7 +41,6 @@ sys.path.append(r'C:\Program Files\LynceeTec\Koala\Remote\Remote Libraries\x64')
 clr.AddReference("LynceeTec.KoalaRemote.Client")
 from LynceeTec.KoalaRemote.Client import KoalaRemoteClient
 
-ConfigNumber = 221
 # Define KoalaRemoteClient host
 host=KoalaRemoteClient()
 
@@ -52,11 +52,13 @@ username = 'admin'
 [ret,username] = host.Connect(IP,username,True);
 host.Login('admin')
 # Open config
+
+ConfigNumber = 221
 host.OpenConfig(ConfigNumber);
 host.OpenPhaseWin()
 host.OpenIntensityWin()
 host.OpenHoloWin()
-fname = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\Sample2x2x36_forFabian\2023-02-28 10-06-34\00001\00001_00001\Holograms\00000_holo.tif'
+fname = save_path + r"\00000_holo.tif"
 host.LoadHolo(fname,1)
 #%%
 def subtract_plane(field, plane_degree):
@@ -68,14 +70,24 @@ def subtract_plane(field, plane_degree):
     plane = reg.predict(X).reshape(field.shape[0],field.shape[1])
     return field - plane
 
-def evaluate_reconstruction_distance_minus_squared_std(x):
+def evaluate_sharpness_squared_std(x):
     host.SetRecDistCM(x[0])
     host.OnDistanceChange()
     host.SaveImageFloatToFile(4,r'C:\Master_Thesis_Fabian_Braun\Data\test.bin',True)
     image_values, header = binkoala.read_mat_bin(r'C:\Master_Thesis_Fabian_Braun\Data\test.bin')
-    image_values = subtract_plane(image_values, 1)
-    image_values *= image_values
-    return -np.std(image_values)
+    image_values = subtract_plane(image_values, 2)
+    return -sharpness_squared_std(image_values)
+
+
+def sharpness_squared_std(gray_image):
+    # Calculate gradient magnitude using Sobel filter
+    grad_x = scipy.ndimage.sobel(gray_image, axis=0)
+    grad_y = scipy.ndimage.sobel(gray_image, axis=1)
+    grad_mag = np.sqrt(grad_x ** 2 + grad_y ** 2)
+    
+    # Calculate sharpness score as the std gradient magnitude
+    sharpness = np.std(grad_mag**2)
+    return sharpness
 
 #%%
 ########################## calculate whole function space ##########################
@@ -85,7 +97,7 @@ y = np.zeros(400)
 for i in range(400):
     xi = -3+i*0.01
     x[i] = xi
-    y[i] = -evaluate_reconstruction_distance_minus_squared_std([xi])
+    y[i] = evaluate_sharpness_squared_std([xi])
 np.save(save_path+'/x', x)
 np.save(save_path+'/y', y)
 end = time.time()
@@ -96,12 +108,13 @@ import warnings
 warnings.filterwarnings("ignore")
 starts = np.arange(-3,1,0.1)
 results = np.ndarray((len(optimizers), len(starts)))
+results_sharpness = np.ndarray((len(optimizers), len(starts)))
 duration = np.ndarray((len(optimizers), len(starts)))
 bounds = Bounds(lb=-3, ub=1, keep_feasible=False)
 for i, optimizer in enumerate(optimizers):
     for j in range(len(starts)):
         start = time.time()
-        res = minimize(evaluate_reconstruction_distance_minus_squared_std, [starts[j]], method=optimizer, bounds=bounds)
+        res = minimize(evaluate_sharpness_squared_std, [starts[j]], method=optimizer, bounds=bounds)
         results[i,j] = res.x[0]
         end = time.time()
         duration[i,j] = end-start
@@ -127,6 +140,4 @@ plt.savefig(save_path+"/optimizing_mothods", dpi=300)
 plt.show()
 
 #%%
-host.SetRecDistCM(0.1)
-host.OnDistanceChange()
 

@@ -20,14 +20,12 @@ default_dir = r'Q:\SomethingFun'
 base_dir = Open_Directory(default_dir, "Open a scanning directory")
 all_loc = [ f.name for f in os.scandir(base_dir) if f.is_dir()]
 timestamps = len(os.listdir(base_dir+os.sep+all_loc[0]+os.sep+"00001_00001\Holograms"))
-
-list_of_averaged_image = []
+#%%
 for loc in all_loc:
     for i in range(timestamps):
         loc_dir = base_dir+os.sep+loc
         spa = SpatialPhaseAveraging(loc_dir, i, host)
         averaged_image = spa.get_cplx_avg()
-        list_of_averaged_image.append(averaged_image)
         ph = get_result_unwrap(np.angle(averaged_image))
         
         fname = loc_dir +"\\avg_phase_"+str(i).zfill(5)+".bin"
@@ -47,5 +45,5 @@ print((end-start)//60, ' min')
 import matplotlib.pyplot as plt
 
 plt.figure()
-plt.imshow(ph)
+plt.imshow(np.angle(spa.holo_list[1].cplx_image))
 

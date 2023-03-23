@@ -1,16 +1,45 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Mar  7 09:22:27 2023
+Created on Mon Mar 20 09:07:36 2023
 
 @author: SWW-Bc20
 """
+
+import os
 import sys
+os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging')
+from utils import connect_to_remote_koala
 import binkoala
+import time
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from scipy.optimize import minimize, Bounds
+from skimage.registration import phase_cross_correlation
+from scipy import ndimage
+from utils import connect_to_remote_koala, Open_Directory, get_result_unwrap
+import cv2
 import scipy.ndimage
+
+save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\holo_in_use'
+if not os.path.exists(save_path):
+    os.makedirs(save_path)
+
+
+#%%
+
+def evaluate_std_sobel_squared(gray_image):
+    # Calculate gradient magnitude using Sobel filter
+    grad_x = scipy.ndimage.sobel(gray_image, axis=0)
+    grad_y = scipy.ndimage.sobel(gray_image, axis=1)
+    grad_mag_squared = grad_x ** 2 + grad_y ** 2
+    
+    # Calculate sharpness score as the std gradient magnitude
+    sharpness = np.std(grad_mag_squared)
+    
+    return sharpness
+
 
 class Hologram:
     def __init__(self, fname):
@@ -29,7 +58,7 @@ class Hologram:
         self.koala_host = None # client with which interaction with koala takes place
         self.cplx_image = None # as soon as the focus point is found this function is evaluated
     
-    def calculate_focus(self, koala_host, focus_method='sharpness_squared_std', optimizing_method= 'Powell', tolerance=None,
+    def calculate_focus(self, koala_host, focus_method='std_sobel_squared', optimizing_method= 'Powell', tolerance=None,
                         x0=None, plane_basis_vectors='Polynomial', plane_fit_order=3, use_amp=True):
         """
         
@@ -146,12 +175,12 @@ class Hologram:
             image_values *= image_values
             #returns the negativ since most optimizing function look for the Minimum
             return -np.std(image_values)
-        elif self.focus_method == 'sharpness_squared_std':
-            return -self._evaluate_sobel_squared_std(image_values)
+        elif self.focus_method == 'std_sobel_squared':
+            return -self._evaluate_std_sobel_squared(image_values)
         else:
             print("Method ", self.focus_method, " to find the focus point is not implemented.")
     
-    def _evaluate_sobel_squared_std(self, gray_image):
+    def _evaluate_std_sobel_squared(self, gray_image):
         """
 
         Parameters
@@ -258,3 +287,150 @@ class Hologram:
         
         """
         return np.dot( np.linalg.inv(np.dot(self.X_plane.transpose(), self.X_plane)), self.X_plane.transpose())
+
+
+class SpatialPhaseAveraging:
+    def __init__(self, loc_dir, timestep, koala_host, focus_method='std_sobel_squared', optimizing_method= 'Powell',
+                 tolerance=None, plane_basis_vectors='Polynomial', plane_fit_order=3, use_amp=True):
+        self.loc_dir = loc_dir
+        self.timestep = timestep
+        self.koala_host = koala_host
+        self.focus_method = focus_method
+        self.optimizing_method = optimizing_method
+        self.tolerance = tolerance
+        self.plane_basis_vectors = plane_basis_vectors
+        self.plane_fit_order = plane_fit_order
+        self.use_amp = use_amp
+        self.x0_guess = None
+        self.pos_list = [ f.name for f in os.scandir(loc_dir) if f.is_dir()]
+        self.num_pos = len(self.pos_list)
+        self.holo_list = self._generate_holo_list()
+        self.holo_list_in_use = self.holo_list
+        self.focus_score_list = []
+        self.background = self._background()
+        self.cplx_avg = self._cplx_avg()
+    
+    
+    def _background(self):
+        background = self.holo_list_in_use[0].cplx_image
+        background = self._subtract_bacterias(background)
+        self.focus_score_list.append(self.holo_list_in_use[0].focus_score)
+        for i in range(1, self.num_pos):
+            cplx_image = self.holo_list_in_use[i].cplx_image
+            self.focus_score_list.append(self.holo_list_in_use[i].focus_score)
+            cplx_image = self._subtract_phase_offset(cplx_image, background)
+            cplx_image = self._subtract_bacterias(cplx_image)
+            background += cplx_image
+        return background/self.num_pos
+    
+    def _cplx_avg(self):
+        cplx_avg = self.holo_list_in_use[0].cplx_image
+        cplx_avg /= self.background
+        for i in range(1, self.num_pos):
+            cplx_image = self.holo_list_in_use[i].cplx_image
+            cplx_image /= self.background
+            cplx_image = self._shift_image(cplx_avg, cplx_image)
+            cplx_image = self._subtract_phase_offset(cplx_image, cplx_avg)
+            cplx_avg += cplx_image
+        return cplx_avg/self.num_pos
+    
+    def _generate_holo_list(self):
+        holo_list = []
+        for pos in self.pos_list:
+            fname = self.loc_dir + os.sep + pos + os.sep + "Holograms" + os.sep + str(self.timestep).zfill(5) + "_holo.tif"
+            holo = Hologram(fname)
+            holo.calculate_focus(self.koala_host, focus_method=self.focus_method, optimizing_method=self.optimizing_method, tolerance=self.tolerance,
+                                 x0=self.x0_guess, plane_basis_vectors=self.plane_basis_vectors, plane_fit_order=self.plane_fit_order)
+            # first guess is the focus point of the last image
+            self.x0_guess = holo.focus
+            holo_list.append(holo)
+        return holo_list
+    
+    def get_amp_avg(self):
+        return np.absolute(self.cplx_avg)
+    
+    def get_cplx_avg(self):
+        return self.cplx_avg
+    
+    def get_mass_avg(self):
+        ph = np.angle(self.cplx_avg)
+        cut_off = 0.15
+        return np.sum(ph[ph<cut_off])
+    
+    def get_phase_avg(self):
+        return np.angle(self.cplx_avg)
+    
+    def restrict_holo_use(self, holo_used):
+        self.holo_list_in_use = [self.holo_list[i] for i in holo_used]
+        self.num_pos = len(holo_used)
+        self.background = self._background()
+        self.cplx_avg = self._cplx_avg()
+    
+    def _shift_image(self, reference_image, moving_image):
+        shift_measured, error, diffphase = phase_cross_correlation(np.angle(reference_image), np.angle(moving_image), upsample_factor=10, normalization=None)
+        shiftVector = (shift_measured[0],shift_measured[1])
+        #interpolation to apply the computed shift (has to be performed on float array)
+        real = ndimage.shift(np.real(moving_image), shift=shiftVector, mode='wrap')
+        imaginary = ndimage.shift(np.imag(moving_image), shift=shiftVector, mode='wrap')
+        return real+complex(0.,1.)*imaginary
+    
+    def _subtract_bacterias(self, cplx_image):
+        # subtracts pixel  that are far away from the mean and replaces them with the mean of the image
+        # cut off value is determined by hand and has to be reestimated for different use cases
+        cut_off = 0.15
+        ph = np.angle(cplx_image)
+        ph[cut_off<ph] = np.mean(ph[ph<cut_off])
+        return np.absolute(cplx_image)*np.exp(1j*ph)
+    
+    def _subtract_phase_offset(self, new, avg):
+        z= np.angle(np.multiply(new,np.conj(avg))) #phase differenc between actual phase and avg_cplx phase
+        #measure offset using the mode of the histogram, instead of mean,better for noisy images (rough sample)
+        hist = np.histogram(z,bins=1000,range=(np.min(z),np.max(z)))
+        index = np.argmax(hist[0])
+        offset_value = hist[1][index]
+        new *= np.exp(-offset_value*complex(0.,1.))#compensate the offset for the new wavefront
+        return new
+    
+#%%
+ConfigNumber = 221
+host = connect_to_remote_koala(ConfigNumber)
+#%%
+default_dir = r'Q:\SomethingFun' 
+base_dir = Open_Directory(default_dir, "Open a scanning directory")
+all_loc = [ f.name for f in os.scandir(base_dir) if f.is_dir()]
+timestamps = len(os.listdir(base_dir+os.sep+all_loc[0]+os.sep+"00001_00001\Holograms"))
+all_holos = list(np.arange(25))
+every_secand = list(np.arange(0,25,2))
+X_form = [0,4,6,8,12,16,18,20,24]
+tree_square = [0,1,2,5,6,7,10,11,12]
+four_square = [0,1,2,3,5,6,7,8,10,11,12,13,15,16,17,18]
+edges = [0,1,2,3,4,5,9,10,14,15,19,20,21,22,23,24]
+three_square_outer_every_second = [0,2,4,6,7,8,10,11,12,13,14,16,17,18,20,22,24]
+two_square_and_edges = [0,3,6,7,11,12,15,18]
+num_images = 100
+holos_in_use = [all_holos, every_secand, X_form, tree_square, four_square, edges, three_square_outer_every_second, two_square_and_edges]
+holos_name = ['all_holos', 'every_secand', 'X_form', 'tree_square', 'four_square', 'edges', 'three_square_outer_every_second', 'two_square_and_edges']
+std_sobel_squared = np.zeros((num_images,len(holos_in_use)))
+mass = np.zeros((num_images,len(holos_in_use)))
+focus_score_lists = []
+
+for i in range(num_images):
+    l = np.random.randint(len(all_loc))
+    loc = all_loc[l]
+    timestamp = np.random.randint(timestamps)
+    loc_dir = base_dir+os.sep+loc
+    spa = SpatialPhaseAveraging(loc_dir, timestamp , host)
+    focus_score_lists.append(spa.focus_score_list)
+    for j, holo_in_use in enumerate(holos_in_use):
+        spa.restrict_holo_use(holo_in_use)
+        averaged_image = spa.get_cplx_avg()
+        ph = get_result_unwrap(np.angle(averaged_image))
+        std_sobel_squared[i,j] = evaluate_std_sobel_squared(ph)
+        mass[i,j] = spa.get_mass_avg()
+    print(i, " done")
+
+#%%
+plt.figure()
+plt.bar(holos_name, std_sobel_squared.mean(axis=0))
+
+
