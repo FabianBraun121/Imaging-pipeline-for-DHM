@@ -356,7 +356,7 @@ class SpatialPhaseAveraging:
     
     def get_mass_avg(self):
         ph = np.angle(self.cplx_avg)
-        cut_off = 0.2
+        cut_off = 0.15
         return np.sum(ph[cut_off<ph])
     
     def get_phase_avg(self):
@@ -379,7 +379,7 @@ class SpatialPhaseAveraging:
     def _subtract_bacterias(self, cplx_image):
         # subtracts pixel  that are far away from the mean and replaces them with the mean of the image
         # cut off value is determined by hand and has to be reestimated for different use cases
-        cut_off = 0.2
+        cut_off = 0.15
         ph = np.angle(cplx_image)
         ph[cut_off<ph] = np.mean(ph[ph<cut_off])
         return np.absolute(cplx_image)*np.exp(1j*ph)
@@ -394,13 +394,13 @@ class SpatialPhaseAveraging:
         return new
     
 #%%
-ConfigNumber = 221
+ConfigNumber = 219
 host = connect_to_remote_koala(ConfigNumber)
-#%%
 default_dir = r'Q:\SomethingFun' 
 base_dir = Open_Directory(default_dir, "Open a scanning directory")
 all_loc = [ f.name for f in os.scandir(base_dir) if f.is_dir()]
 timestamps = len(os.listdir(base_dir+os.sep+all_loc[0]+os.sep+"00001_00001\Holograms"))
+#%%
 all_holos = list(np.arange(25))
 every_secand = list(np.arange(0,25,2))
 X_form = [0,4,6,8,12,16,18,20,24]
@@ -409,15 +409,19 @@ four_square = [0,1,2,3,5,6,7,8,10,11,12,13,15,16,17,18]
 edges = [0,1,2,3,4,5,9,10,14,15,19,20,21,22,23,24]
 three_square_outer_every_second = [0,2,4,6,7,8,10,11,12,13,14,16,17,18,20,22,24]
 two_square_and_edges = [0,3,6,7,11,12,15,18]
-num_images = 2
-num_images_saved = 2
-holos_in_use = [all_holos, every_secand, X_form, tree_square, four_square, edges, three_square_outer_every_second, two_square_and_edges]
-holos_name_list = ['all_holos', 'every_secand', 'X_form', 'tree_square', 'four_square', 'edges', 'three_square_outer_every_second', 'two_square_and_edges']
+edge_every_secand = [0,2,4,10,14,20,22,24]
+num_images = 100
+num_images_saved = 20
+holos_in_use = [all_holos, every_secand, X_form, tree_square, four_square, edges, three_square_outer_every_second, two_square_and_edges, edge_every_secand]
+holos_name_list = ['all_holos', 'every_secand', 'X_form', 'tree_square', 'four_square', 'edges', 'three_square_outer_every_second', 'two_square_and_edges', 'edge_every_secand']
 std_sobel_squared = np.zeros((num_images,len(holos_in_use)))
 mass = np.zeros((num_images,len(holos_in_use)))
+std_diff_to_full_image = np.zeros((num_images,len(holos_in_use)))
 focus_score_lists = []
 exmaplary_images = np.ndarray((num_images_saved,len(holos_in_use), 800, 800))
 
+#%%
+start = time.time()
 for i in range(num_images):
     l = np.random.randint(len(all_loc))
     loc = all_loc[l]
@@ -425,47 +429,73 @@ for i in range(num_images):
     loc_dir = base_dir+os.sep+loc
     spa = SpatialPhaseAveraging(loc_dir, timestamp , host)
     focus_score_lists.append(spa.focus_score_list)
+    phase_all = get_result_unwrap(np.angle(spa.get_cplx_avg()))
     for j, holo_in_use in enumerate(holos_in_use):
         spa.restrict_holo_use(holo_in_use)
         averaged_image = spa.get_cplx_avg()
         ph = get_result_unwrap(np.angle(averaged_image))
         if i<num_images_saved:
             exmaplary_images[i,j] = ph
-        std_sobel_squared[i,j] = evaluate_std_sobel_squared(ph)
+        std_sobel_squared[i,j] = evaluate_std_sobel_squared(ph[100:700,100:700])
         mass[i,j] = spa.get_mass_avg()
+        std_diff_to_full_image[i,j] = np.std(ph[100:700,100:700]-phase_all[100:700,100:700])
     print(i, " done")
+end = time.time()
+print(f'evaluation took {(end-start)//60} min, which is {np.round((end-start)/num_images,1)} secands per image')
 
 focus_score = np.array(focus_score_lists)
 holos_name = np.array(holos_name_list)
+in_use = np.array([len(holos_in_use[i]) for i in range(len(holos_in_use))])
 np.save(save_path + r'\std_sobel_squared', std_sobel_squared)
 np.save(save_path + r'\mass', mass)
+np.save(save_path + r'\std_diff_to_full_image', std_diff_to_full_image)
 np.save(save_path + r'\focus_score', focus_score)
+np.save(save_path + r'\in_use', in_use)
 np.save(save_path + r'\holos_name', holos_name)
 np.save(save_path + r'\exmaplary_images', exmaplary_images)
 #%%
 std_sobel_squared = np.load(save_path + r'\std_sobel_squared.npy')
 mass = np.load(save_path + r'\mass.npy')
+std_diff_to_full_image = np.load(save_path + r'\std_diff_to_full_image.npy')
+std_sobel_squared = np.load(save_path + r'\std_sobel_squared.npy')
 focus_score = np.load(save_path + r'\focus_score.npy')
+in_use = np.load(save_path + r'\in_use.npy')
 holos_name = np.load(save_path + r'\holos_name.npy')
 exmaplary_images = np.load(save_path + r'\exmaplary_images.npy')
+#%%
+mass_ = mass[1000<mass[:,0]]
+mass_change = (mass_[:,1:].T/mass_[:,0]).T
+std_sobel_squared_ = std_sobel_squared[1000<mass[:,0]]
+sharpness_change = (std_sobel_squared_[:,1:].T/std_sobel_squared_[:,0]).T
+labels = []
+for i in range(len(holos_name)-1):
+    labels.append(f'{holos_name[i+1]}\n{in_use[i+1]}')
 
 plt.figure('sharpness comparison')
-plt.bar(holos_name, std_sobel_squared.mean(axis=0))
+plt.boxplot(sharpness_change, labels=labels)
 plt.savefig(save_path+"/sharpness_comparison", dpi=300)
 plt.show()
 
 plt.figure('mass comparison')
-plt.bar(holos_name, mass.mean(axis=0))
+plt.boxplot(mass_change, labels=labels)
 plt.savefig(save_path+"/mass_comparison", dpi=300)
 plt.show()
 
 #%%
-image = 0
+normalized_images = exmaplary_images[:,:,100:700,100:700].copy()
+normalized_images[:,1:] = np.array([normalized_images[i,1:]-normalized_images[i,0] for i in range(normalized_images.shape[0])])
+std = np.mean(std_diff_to_full_image, axis=(0))
+#%%
+labels = [f'{in_use[i]}: {holos_name[i]}, std: {np.round(std[i]*1000,3)}' for i in range(len(std))]
+image = 9
 horizontal_images = len(holos_in_use)//2
 vertical_images = 2
 fig , ax = plt.subplots(vertical_images,horizontal_images)
 for i in range(vertical_images):
     for j in range(horizontal_images):
-        ax[i,j].imshow(exmaplary_images[image, i*horizontal_images+j])
-        ax[i,j].set_title(holos_name[i*horizontal_images+j])
+        k = i*horizontal_images+j+1
+        ax[i,j].imshow(normalized_images[image, k])
+        label = f'{in_use[k]}: {holos_name[k]}, std: {np.round(np.std(normalized_images[image,k]*1000),3)}*e-3'
+        ax[i,j].set_title(label)
+            
 

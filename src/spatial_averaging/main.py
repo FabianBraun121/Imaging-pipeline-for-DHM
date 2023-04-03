@@ -14,21 +14,27 @@ import time
 
 
 start = time.time()
-ConfigNumber = 221
+ConfigNumber = 218
 host = connect_to_remote_koala(ConfigNumber)
 default_dir = r'Q:\SomethingFun' 
 base_dir = Open_Directory(default_dir, "Open a scanning directory")
+save_base_folder = base_dir + " phase averages"
+if not os.path.exists(save_base_folder):
+    os.makedirs(save_base_folder)
 all_loc = [ f.name for f in os.scandir(base_dir) if f.is_dir()]
 timestamps = len(os.listdir(base_dir+os.sep+all_loc[0]+os.sep+"00001_00001\Holograms"))
 #%%
-for loc in all_loc:
-    for i in range(timestamps):
+for loc in all_loc[1:]:
+    for i in range(timestamps)[:171]:
         loc_dir = base_dir+os.sep+loc
         spa = SpatialPhaseAveraging(loc_dir, i, host)
         averaged_image = spa.get_cplx_avg()
         ph = get_result_unwrap(np.angle(averaged_image))
         
-        fname = loc_dir +"\\avg_phase_"+str(i).zfill(5)+".bin"
+        save_loc_folder = save_base_folder +os.sep + loc
+        if not os.path.exists(save_loc_folder):
+            os.makedirs(save_loc_folder)
+        fname = save_loc_folder +"\\timestep_"+str(i).zfill(5)+".bin"
         header = spa.holo_list[0].header()
         width = (int)(header["width"])
         height = (int)(header["height"])
@@ -41,9 +47,5 @@ for loc in all_loc:
 end = time.time()
 print((end-start)//60, ' min')
 
-#%%
-import matplotlib.pyplot as plt
 
-plt.figure()
-plt.imshow(np.angle(spa.holo_list[1].cplx_image))
 

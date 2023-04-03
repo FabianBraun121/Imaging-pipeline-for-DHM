@@ -109,10 +109,10 @@ class Hologram:
         if use_amp:
             self.koala_host.SaveImageFloatToFile(2,self.cache_path+'_amp.bin',True)
             amp, __header = binkoala.read_mat_bin(self.cache_path+'_amp.bin')
-            cplx = amp*np.exp(complex(0.,1.)*ph)
+            cplx_image = amp*np.exp(complex(0.,1.)*ph)
         else:
-            cplx = np.exp(complex(0.,1.)*ph)
-        return cplx
+            cplx_image = np.exp(complex(0.,1.)*ph)
+        return cplx_image
     
     def _evaluate_reconstruction_distance(self, reconstruction_distance):
         """

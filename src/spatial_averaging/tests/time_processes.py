@@ -93,7 +93,7 @@ for i in range(100):
     host.OnDistanceChange()
     image_values = host.GetIntensity32fImage()
 end = time.time()
-print('Saving and reading an image in Koala takes',np.round((end-start),10), 'ms per image')
+print('Saving and reading an image in Koala takes',np.round((end-start),10)*10, 'ms per image')
 #%%
 start = time.time()
 for i in range(100):
@@ -102,7 +102,7 @@ for i in range(100):
     host.SaveImageFloatToFile(4,r'C:\Master_Thesis_Fabian_Braun\Data\test.bin',True)
     image_values, header = binkoala.read_mat_bin(r'C:\Master_Thesis_Fabian_Braun\Data\test.bin')
 end = time.time()
-print('Saving and reading an image in Koala takes',np.round((end-start),10), 'ms per image')
+print('Saving and reading an image in Koala takes',np.round((end-start),10)*10, 'ms per image')
 #%%
 host.SetRecDistCM(-2.3)
 host.OnDistanceChange()

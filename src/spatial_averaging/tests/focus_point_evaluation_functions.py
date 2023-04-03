@@ -286,81 +286,115 @@ plt.xlabel("lengths [cm]")
 plt.title("fuzzy entropy of different reconstruction lengths")
 plt.savefig(save_path+"/y_fuzzy_entropy", dpi=300)
 plt.show()
+    
 #%%
-
-
-
-
-
-
-
-
-
-
-
-import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
+import matplotlib.pyplot as plt
+from matplotlib.patches import FancyArrowPatch
+from mpl_toolkits.mplot3d import proj3d
 import numpy as np
 
-def show_image_slider(frames, frame_labels=None):
-    """Displays a series of images in the form of a NumPy array, with a play button and a slider.
+def interactive_image_player(frames, frame_dist=None, frame_func_eval=None):
+    """This function allows you to easily display and interact with a series of images as a slider,
+    with a play/pause button to animate the frames. The player also includes keyboard shortcuts for
+    play/pause and frame navigation. The images can be accompanied by distance or function evaluation
+    information, making it suitable for a range of applications including image analysis and video processing.
 
     Parameters:
     frames (numpy.ndarray): A NumPy array of image frames, with shape (num_frames, height, width, channels).
-    frame_labels (list of str): A list of labels for each frame in the series. If None, the frame index is used.
-
+    frame_dist (list of str): A list of distances for each frame in the series. If None, the frame index is used.
+    frame_func_eval (list of str): A list of function evaluations for each frame in the series.
+    
     Returns:
     None
     """
-    num_frames, height, width= frames.shape
+    if len(frames.shape) == 3:
+        num_frames, height, width = frames.shape
+    else:
+        num_frames, height, width, channels = frames.shape
 
     # Create the figure and axes objects
     fig, ax = plt.subplots()
-    plt.subplots_adjust(left=0.25, bottom=0.25)
+    plt.subplots_adjust(left=0.1, bottom=0.3, right=0.9, top=0.9)
 
     # Display the first frame
     im = ax.imshow(frames[0])
 
     # Create the slider axes object
-    slider_ax = plt.axes([0.25, 0.1, 0.65, 0.03])
+    slider_ax = plt.axes([0.1, 0.15, 0.8, 0.05])
     slider = Slider(slider_ax, 'Frame', 0, num_frames-1, valinit=0)
 
-    # Create the play button axes object
-    play_ax = plt.axes([0.8, 0.025, 0.1, 0.04])
-    play_button = Button(play_ax, 'Play', color='lightgoldenrodyellow', hovercolor='0.975')
+    # Create the play/pause button axes object
+    play_pause_ax = plt.axes([0.45, 0.025, 0.1, 0.1])
+    play_pause_button = Button(play_pause_ax, label='▶', color='lightgoldenrodyellow', hovercolor='0.975')
 
     # Define the update function for the slider
     def update(val):
         frame_idx = int(slider.val)
         im.set_data(frames[frame_idx])
-        if frame_labels is not None:
-            ax.set_title(frame_labels[frame_idx])
+        if frame_dist is not None:
+            title = f'Dist: {np.round(frame_dist[frame_idx],1)}'
         else:
-            ax.set_title(str(frame_idx))
+            title = f'Frame {frame_idx}'
+        if frame_func_eval is not None:
+            title = title + f', Func_eval: {np.around(frame_func_eval[frame_idx],3)}'
+        ax.set_title(title, fontsize=16)
         fig.canvas.draw_idle()
 
     # Connect the slider update function to the slider object
     slider.on_changed(update)
 
-    # Define the update function for the play button
-    def play(event):
-        for i in range(num_frames):
-            slider.set_val(i)
-            plt.pause(0.01)
+    # Define the play/pause function
+    def play_pause(event):
+        nonlocal playing
+        playing = not playing
+        if playing:
+            play_pause_button.label.set_text('❚❚')
+            for i in range(int(slider.val), num_frames):
+                slider.set_val(i)
+                plt.pause(0.01)
+                if not playing:
+                    break
+            if playing:
+                play_pause_button.label.set_text('▶')
+        else:
+            play_pause_button.label.set_text('▶')
+    
+    # Define the key press function
+    def key_press(event):
+        nonlocal playing
+        if event.key == ' ':
+            play_pause(None)
+        elif event.key == 'right':
+            if slider.val < num_frames-1:
+                slider.set_val(slider.val + 1)
+        elif event.key == 'left':
+            if slider.val > 0:
+                slider.set_val(slider.val - 1)
 
-    # Connect the play function to the play button object
-    play_button.on_clicked(play)
+    # Initialize the playing flag to False
+    playing = False
+
+    # Connect the play/pause function to the play/pause button object
+    play_pause_button.on_clicked(play_pause)
+    
+    # Connect the key press function to the figure object
+    fig.canvas.mpl_connect('key_press_event', key_press)
 
     # Set the title of the first frame
-    if frame_labels is not None:
-        ax.set_title(frame_labels[0])
+    if frame_dist is not None:
+        title = f'Dist: {np.round(frame_dist[0],1)}'
     else:
-        ax.set_title('0')
-
+        title = 'Frame 0'
+    if frame_func_eval is not None:
+        title = title + f', Func_eval: {np.around(frame_func_eval[0],3)}'
+    ax.set_title(title, fontsize=16)
+    
     # Show the plot
     plt.show()
 #%%
-show_image_slider(images)
+interactive_image_player(images, x, y_sobel_squared_std*1000)
+
 
 
 
