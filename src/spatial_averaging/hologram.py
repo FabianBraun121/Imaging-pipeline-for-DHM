@@ -4,10 +4,9 @@ Created on Tue Mar  7 09:22:27 2023
 
 @author: SWW-Bc20
 """
-import sys
+import os
 import binkoala
 import numpy as np
-from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 from scipy.optimize import minimize, Bounds
 import scipy.ndimage
@@ -25,7 +24,7 @@ class Hologram:
         self.plane_fit_order = None # also named degree
         self.X_plane = None # since the evaluation points, aka imagepoints stay constant X for linear regression is always the same
         self.X_plane_pseudoinverse = None # together with X_plane here to calculate linear regression, less computational cost since constant for all images
-        self.cache_path = 'C:\\Users\\SWW-Bc20\\Documents\\GitHub\\Imaging-pipeline-for-DHM\\data\\__file'
+        self.cache_path = os.getcwd() + os.sep + '..\\..\\data\\__file'
         self.koala_host = None # client with which interaction with koala takes place
         self.cplx_image = None # as soon as the focus point is found this function is evaluated
     

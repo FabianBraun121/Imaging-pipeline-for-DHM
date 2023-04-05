@@ -61,16 +61,19 @@ fname = r'F:\C11_20230217\2023-02-17 11-13-34 phase averages\00002\timestep_0007
 image, header = binkoala.read_mat_bin(fname)
 #%%
 N = image.shape[0]
-buffers = 10*np.arange(10)
+buffers = 10*np.arange(5)
 
 fig, ax = plt.subplots(2,5)
 for i,b in enumerate(buffers):
     Ni = N+b
     imagei = np.zeros((image.shape[0]+b, image.shape[1]+b))
     imagei[:image.shape[0], :image.shape[1]] = image
-    D = constructD(Ni, 100)
+    D = constructD(Ni, 2)
     F = np.fft.fftshift(np.fft.fft2(imagei))
     g = computeFilteredImage(D, F)
-    ax[i//5,i%5].imshow(g[:image.shape[0], :image.shape[1]])
+    ax[0,i].imshow(g[:image.shape[0], :image.shape[1]])
+    D = np.ones(D.shape)-D
+    g = computeFilteredImage(D, F)
+    ax[1,i].imshow(g[:image.shape[0], :image.shape[1]])
 
 

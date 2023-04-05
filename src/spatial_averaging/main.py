@@ -41,7 +41,7 @@ for loc in all_loc[1:]:
         px_size = (float)(header["px_size"])
         hconv = (float)(header["hconv"])
         unit_code = (int)(header["unit_code"])
-        binkoala.write_mat_bin(fname, ph, width, height, px_size, hconv, unit_code) 
+        binkoala.write_mat_bin(fname, ph, width, height, px_size, hconv, unit_code)
         print(fname)
 
 end = time.time()
