@@ -1,0 +1,15 @@
+{
+  "focus_method": "sobel_squared_std",
+  "optimizing_method": "Powell",
+  "tolerance": null,
+  "reconstrution_distance_low": -3.0,
+  "reconstrution_distance_high": -1.0,
+  "plane_basis_vectors": "Polynomial",
+  "plane_fit_order": "5",
+  "use_amp": true,
+  "image_size": [
+    800,
+    800
+  ],
+  "cache_path": "C:\\Users\\SWW-Bc20\\Documents\\GitHub\\Imaging-pipeline-for-DHM\\data"
+}

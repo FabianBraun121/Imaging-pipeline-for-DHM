@@ -6,24 +6,20 @@ Created on Wed Mar  8 16:21:03 2023
 """
 import os
 import numpy as np
-from hologram import Hologram
 from skimage.registration import phase_cross_correlation
 from scipy import ndimage
 
+from .hologram import Hologram
+from . import utilities as utils
+from .utilities import cfg
+
 class SpatialPhaseAveraging:
-    def __init__(self, loc_dir, timestep, koala_host, focus_method='sharpness_squared_std', optimizing_method= 'Powell',
-                 tolerance=None, plane_basis_vectors='Polynomial', plane_fit_order=5, use_amp=True):
+    def __init__(self, loc_dir, timestep):
         self.loc_dir = loc_dir
         self.timestep = timestep
-        self.koala_host = koala_host
-        self.focus_method = focus_method
-        self.optimizing_method = optimizing_method
-        self.tolerance = tolerance
-        self.plane_basis_vectors = plane_basis_vectors
-        self.plane_fit_order = plane_fit_order
-        self.use_amp = use_amp
         self.x0_guess = None
         self.pos_list = [ f.name for f in os.scandir(loc_dir) if f.is_dir()]
+        self.shift_vectors = [(0,0)]
         self.num_pos = len(self.pos_list)
         self.holo_list = self._generate_holo_list()
         self.background = self._background()
@@ -46,7 +42,8 @@ class SpatialPhaseAveraging:
         for i in range(1, self.num_pos):
             cplx_image = self.holo_list[i].get_cplx_image()
             cplx_image /= self.background
-            cplx_image = self._shift_image(cplx_avg, cplx_image)
+            cplx_image, shift_vector = self._shift_image(cplx_avg, cplx_image)
+            self.shift_vectors.append(shift_vector)
             cplx_image = self._subtract_phase_offset(cplx_image, cplx_avg)
             cplx_avg += cplx_image
         return cplx_avg/self.num_pos
@@ -56,30 +53,22 @@ class SpatialPhaseAveraging:
         for pos in self.pos_list:
             fname = self.loc_dir + os.sep + pos + os.sep + "Holograms" + os.sep + str(self.timestep).zfill(5) + "_holo.tif"
             holo = Hologram(fname)
-            holo.calculate_focus(self.koala_host, focus_method=self.focus_method, optimizing_method=self.optimizing_method, tolerance=self.tolerance,
-                                 x0=self.x0_guess, plane_basis_vectors=self.plane_basis_vectors, plane_fit_order=self.plane_fit_order, use_amp= self.use_amp)
+            holo.calculate_focus(x0=self.x0_guess)
             # first guess is the focus point of the last image
             self.x0_guess = holo.focus
             holo_list.append(holo)
         return holo_list
     
-    def get_amp_avg(self):
-        return np.absolute(self.cplx_avg)
-    
     def get_cplx_avg(self):
         return self.cplx_avg.copy()
     
-    def get_phase_avg(self):
-        return np.angle(self.cplx_avg)
-    
-    
     def _shift_image(self, reference_image, moving_image):
         shift_measured, error, diffphase = phase_cross_correlation(np.angle(reference_image), np.angle(moving_image), upsample_factor=10, normalization=None)
-        shiftVector = (shift_measured[0],shift_measured[1])
+        shift_vector = (shift_measured[0],shift_measured[1])
         #interpolation to apply the computed shift (has to be performed on float array)
-        real = ndimage.shift(np.real(moving_image), shift=shiftVector, mode='wrap')
-        imaginary = ndimage.shift(np.imag(moving_image), shift=shiftVector, mode='wrap')
-        return real+complex(0.,1.)*imaginary
+        real = ndimage.shift(np.real(moving_image), shift=shift_vector, mode='wrap')
+        imaginary = ndimage.shift(np.imag(moving_image), shift=shift_vector, mode='wrap')
+        return real+complex(0.,1.)*imaginary, shift_vector
     
     def _subtract_bacterias(self, cplx_image):
         # subtracts pixel  that are far away from the mean and replaces them with the mean of the image

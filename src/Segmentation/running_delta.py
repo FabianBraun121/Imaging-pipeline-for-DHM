@@ -5,12 +5,10 @@ Spyder Editor
 This is a temporary script file.
 """
 
-import sys
-sys.path.append(r'C:\Users\SWW-Bc20\Documents\GitHub\delta-main')
 import delta
 #%%
 
-delta.config.load_config(presets='2D',config_level='local')
+delta.config.load_config()
 
 #%%
 reader = delta.utilities.xpreader('F:/C11_20230217/test_float',

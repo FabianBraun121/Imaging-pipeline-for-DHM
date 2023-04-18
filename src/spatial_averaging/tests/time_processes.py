@@ -7,7 +7,6 @@ Created on Tue Mar 21 15:41:28 2023
 
 import os
 os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging')
-from utils import connect_to_remote_koala
 import binkoala
 import time
 import numpy as np
@@ -16,17 +15,39 @@ from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 import scipy.ndimage
 import random
+from pyKoalaRemote import client
 
 save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\time_processes'
 if not os.path.exists(save_path):
     os.makedirs(save_path)
+    
+#%%
+def connect_to_remote_koala(ConfigNumber):
+    # Define KoalaRemoteClient host
+    host = client.pyKoalaRemoteClient()
+    #Ask IP address
+    IP = 'localhost'
+    # Log on Koala - default to admin/admin combo
+    host.Connect(IP)
+    host.Login('admin')
+    # Open config
+    host.OpenConfig(ConfigNumber)
+    host.OpenPhaseWin()
+    host.OpenIntensityWin()
+    host.OpenHoloWin()
+    return host
 
-#%%
-ConfigNumber = 221
-host = connect_to_remote_koala(ConfigNumber)
-fname = save_path + r"\00000_holo.tif"
-host.LoadHolo(fname,1)
-#%%
+def logout_login_koala(host, ConfigNumber):
+    host.Logout()
+    time.sleep(0.01)
+    host.Connect('localhost')
+    host.Login('admin')
+    host.OpenConfig(ConfigNumber)
+    host.OpenPhaseWin()
+    host.OpenIntensityWin()
+    host.OpenHoloWin()
+    return host
+    
 def polynomal_extension(X_poly, degrees_left, columns_old):
     if degrees_left<=1:
         return X_poly
@@ -86,6 +107,12 @@ def squared_std(image):
 
 degree = 5
 
+
+#%%
+ConfigNumber = 221
+host = connect_to_remote_koala(ConfigNumber)
+fname = save_path + r"\00000_holo.tif"
+host.LoadHolo(fname,1)
 #%%
 start = time.time()
 for i in range(100):
@@ -94,6 +121,15 @@ for i in range(100):
     image_values = host.GetIntensity32fImage()
 end = time.time()
 print('Saving and reading an image in Koala takes',np.round((end-start),10)*10, 'ms per image')
+#%%
+start = time.time()
+for i in range(10):
+    host = logout_login_koala(host, ConfigNumber)
+    host.SetRecDistCM(random.random())
+    host.OnDistanceChange()
+    image_values = host.GetIntensity32fImage()
+end = time.time()
+print('Saving and reading an image in Koala takes',np.round((end-start),10)*100, 'ms per image')
 #%%
 start = time.time()
 for i in range(100):
