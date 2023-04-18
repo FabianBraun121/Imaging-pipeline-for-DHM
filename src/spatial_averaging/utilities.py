@@ -15,10 +15,6 @@ import numpy as np
 import subprocess
 import time
 import pyautogui
-from mss import mss
-import psutil
-import win32api
-import win32con
 import cv2
 from PyQt5.QtWidgets import QFileDialog
 
@@ -65,20 +61,17 @@ def open_koala():
     wd = os.getcwd()
     os.chdir(r"C:\Program Files\LynceeTec\Koala")
     subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
-    time.sleep(3)
-    # Use the subprocess module to spawn a new process and communicate with it
-    p = subprocess.Popen(["powershell", "-Command", "$wshell = New-Object -ComObject wscript.shell;$wshell.SendKeys('admin{TAB}admin{ENTER}')"])
-    p.wait()
-    time.sleep(2)
+    time.sleep(4)
+    pyautogui.typewrite('admin')
+    pyautogui.press('tab')
+    pyautogui.typewrite('admin')
+    pyautogui.press('enter')
+    time.sleep(4)
     os.chdir(wd)
-    remote_log = cv2.imread(cfg._SPATAVG_DIR + os.sep + r'images/remote_log_icon.png')
-    # Use the mss library to capture a screenshot
-    with mss() as sct:
-        screenshot = sct.shot()
-    x, y = find_image_position(cv2.imread(screenshot), remote_log)
-    win32api.SetCursorPos((x, y))
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
-    win32api.mouse_event(win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+    screenshot = pyautogui.screenshot()
+    remote_log = cv2.imread(r'spatial_averaging/images/remote_log_icon.png')
+    remote_log_pos = find_image_position(screenshot, remote_log)
+    pyautogui.click(remote_log_pos)
 
 def find_image_position(screenshot, image, threshold=0.95):
     """

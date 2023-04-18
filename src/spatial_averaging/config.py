@@ -10,9 +10,7 @@ import numpy as _np
 import subprocess as _subprocess
 import time as _time
 import cv2 as _cv2
-import win32api as _win32api
-import win32con as _win32con
-from mss import mss as _mss
+import pyautogui as _pyautogui
 import psutil as _psutil
 import sys
 # Add Koala remote librairies to Path
@@ -185,20 +183,17 @@ def _open_koala():
     wd = _os.getcwd()
     _os.chdir(r"C:\Program Files\LynceeTec\Koala")
     _subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
-    _time.sleep(3)
-    # Use the subprocess module to spawn a new process and communicate with it
-    p = _subprocess.Popen(["powershell", "-Command", "$wshell = New-Object -ComObject wscript.shell;$wshell.SendKeys('admin{TAB}admin{ENTER}')"])
-    p.wait()
-    _time.sleep(2)
+    _time.sleep(4)
+    _pyautogui.typewrite('admin')
+    _pyautogui.press('tab')
+    _pyautogui.typewrite('admin')
+    _pyautogui.press('enter')
+    _time.sleep(4)
     _os.chdir(wd)
-    remote_log = _cv2.imread(_SPATAVG_DIR + _os.sep + r'images/remote_log_icon.png')
-    # Use the mss library to capture a screenshot
-    with _mss() as sct:
-        screenshot = sct.shot()
-    x, y = _find_image_position(_cv2.imread(screenshot), remote_log)
-    _win32api.SetCursorPos((x, y))
-    _win32api.mouse_event(_win32con.MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
-    _win32api.mouse_event(_win32con.MOUSEEVENTF_LEFTUP, x, y, 0, 0)
+    screenshot = _pyautogui.screenshot()
+    remote_log = _cv2.imread(r'spatial_averaging/images/remote_log_icon.png')
+    remote_log_pos = _find_image_position(screenshot, remote_log)
+    _pyautogui.click(remote_log_pos)
 
 def _is_koala_running():
     for proc in _psutil.process_iter(['name', 'exe']):
