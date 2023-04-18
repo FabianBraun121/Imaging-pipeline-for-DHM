@@ -5,9 +5,10 @@ Created on Mon Apr 17 16:56:24 2023
 @author: SWW-Bc20
 """
 import os
-os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging\tests')
+os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging')
 import numpy as np
 import binkoala
+os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging\tests')
 from test_utilities import interactive_image_player
 from skimage.registration import phase_cross_correlation
 from scipy import ndimage
@@ -32,5 +33,7 @@ for i in range(1, len(images_names)):
     error_list.append(error)
     diffphase_list.append(diffphase)
 
+#%%
 titles = [f'shift vecotr:{shift_vector_list[i]}, error:{error_list[i]}, diffphase:{diffphase_list[i]}' for i in range(len(images_names))]
 interactive_image_player(images, titles=titles)
+#interactive_image_player(images)

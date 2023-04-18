@@ -282,6 +282,7 @@ class Pipeline:
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
         self.image_count: int = 0
+        self.duration = []
         
     def _get_mask_from_rectangle(self, image: Image) -> Mask:
         # Show the image and wait for user to select a rectangle
@@ -329,7 +330,9 @@ class Pipeline:
                     os.makedirs(save_loc_folder)
                 fname = save_loc_folder +"\\ph_timestep_"+str(t).zfill(5)+".bin"
                 binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
-                print(fname, "done in", np.round(time.time()-start_image,1), "seconds")
+                duration_timestep = np.round(time.time()-start_image,1)
+                print(fname, "done in", duration_timestep, "seconds")
+                self.duration.append([l.name, t, duration_timestep])
                 
                 self.image_count += 1
                 if self.image_count % cfg.koala_reset_frequency == 0:
