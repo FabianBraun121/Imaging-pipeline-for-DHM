@@ -45,8 +45,6 @@ reconstruction_distance_high: float = 0.0
 
 reconstruction_distance_guess: float = 0.0
 
-plane_basis_vectors: str = ""
-
 plane_fit_order: int = 0
 
 use_amp: bool = False
@@ -74,7 +72,6 @@ _DEFAULTS = dict(
     reconstrution_distance_low = -3.0,
     reconstrution_distance_high = -1.0,
     reconstruction_distance_guess = -2.3,
-    plane_basis_vectors = "Polynomial",
     plane_fit_order = 5,
     use_amp = True,
     image_size = (800, 800),

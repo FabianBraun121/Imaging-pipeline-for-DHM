@@ -36,6 +36,33 @@ def connect_to_remote_koala(ConfigNumber):
     host.OpenHoloWin()
     return host
 
+def crop_image(image_array, crop_coords):
+    # Extract the crop coordinates
+    ymin, ymax = crop_coords[0]
+    xmin, xmax = crop_coords[1]
+    
+    if xmin < xmax and ymin < ymax:
+        return image_array[ymin:ymax, xmin:xmax]
+    else:
+        # Handle the x-direction
+        if xmin < xmax:
+            cropped_left_right = image_array[:, xmin:xmax]
+        else:
+            cropped_left = image_array[:, xmin:]
+            cropped_right = image_array[:, :xmax]
+            cropped_left_right = np.concatenate((cropped_left, cropped_right), axis=1)
+        
+        # Handle the y-direction
+        if ymin < ymax:
+            cropped_image = cropped_left_right[ymin:ymax, :]
+        else:
+            cropped_top = cropped_left_right[:ymax, :]
+            cropped_bottom = cropped_left_right[ymin:, :]
+            cropped_image = np.concatenate((cropped_top, cropped_bottom), axis=0)
+        
+        # Return the cropped image
+        return cropped_image
+
 def Open_Directory(directory, message):
     #print(directory)
     fname = QFileDialog.getExistingDirectory(None, message, directory, QFileDialog.ShowDirsOnly)

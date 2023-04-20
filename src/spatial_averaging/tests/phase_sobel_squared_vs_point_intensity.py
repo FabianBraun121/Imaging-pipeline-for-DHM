@@ -17,6 +17,8 @@ import scipy.ndimage
 import cv2
 from pyKoalaRemote import client
 from scipy import ndimage
+os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging\tests')
+from test_utilities import interactive_image_player
 
 #%%
 
@@ -31,7 +33,6 @@ host.OpenConfig(ConfigNumber);
 host.OpenPhaseWin()
 host.OpenIntensityWin()
 host.OpenHoloWin()
-host.SetUnwrap2DState(True)
 
 save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\phase_sobel_squared_vs_point_intensity'
 if not os.path.exists(save_path):
@@ -57,19 +58,31 @@ def evaluate_sobel_squared_std(gray_image) -> float:
     return np.std(grad_x ** 2 + grad_y ** 2)
 
 def normalize(function):
-    return function/(np.max(function)-np.min(function))
+    return (function-np.min(function))/(np.max(function)-np.min(function))
+
+def show_image_with_points(image, points):
+    # Create a copy of the image to avoid modifying the original array
+    image_copy = np.copy(image)
+    # Set the marked pixels to red (maximum value)
+    for point in points:
+        x, y = point
+        image_copy[y, x] = np.max(image)*1.5
+    # Plot the image with the marked points
+    plt.imshow(image_copy)
+    plt.show()
 #%%
 fname = save_path + r"\00000_holo.tif"
 host.LoadHolo(fname,1)
+host.SetUnwrap2DState(True)
 X, pseudoinverse = generate_X_and_pseudoinverse(5)
 
-x = np.zeros(200)
+x = np.zeros(800)
 ph_images = np.zeros((x.shape[0],800,800))
 int_images = np.zeros((x.shape[0],800,800))
 sobel_squared = np.zeros(x.shape)
 
 for i in range(x.shape[0]):
-    xi = -3+i*0.01
+    xi = -2.5+i*0.001
     x[i] = xi
     host.SetRecDistCM(xi)
     host.OnDistanceChange()
@@ -92,9 +105,35 @@ ph_images = np.load(save_path+'/ph_images.npy')
 int_images = np.load(save_path+'/int_images.npy')
 sobel_squared = np.load(save_path+'/sobel_squared.npy')
 #%%
+ideal_focus_image = ph_images[np.argmax(sobel_squared)]
+#%%
+cut_off = 0.4
+potential_points = np.array([np.where(cut_off<ideal_focus_image)[1], np.where(cut_off<ideal_focus_image)[0]]).T
+show_image_with_points(ideal_focus_image, potential_points)
+#%%
+int_functions_of_potential_points = int_images[:,potential_points[:,1], potential_points[:,0]]
+int_zero_of_potential_points = np.argmin(np.abs(int_functions_of_potential_points), axis=0)
+filtered_int_zero_of_potential_points = int_zero_of_potential_points[int_zero_of_potential_points<700]
+
+#%%
 b_xy = [[272,155], [266,212], [481,244], [713,661], [131,475]]
+color = ['b', 'g', 'r', 'c', 'm', 'y']
+for i, point in enumerate(b_xy):
+    f = int_images[:,point[1],point[0]]
+    x_ = np.argmin(np.abs(f))
+    _y = normalize(f)
+    plt.plot(x, f , color[i+1], label=f'point intensity {i}, zero at {x[x_]}')
+    _x = np.array([x[x_],x[x_]])
+    __y = np.array([np.min(f), np.max(f)])
+    plt.plot(_x, __y, color[i+1])
 _y = normalize(sobel_squared)
-plt.plot(x, _y, label=f'sobel_squared, max at {x[np.argmax(_y)]}')
+plt.plot(x, _y,color[0], label=f'sobel_squared, max at {x[np.argmax(_y)]}')
 _x = np.array([x[np.argmax(_y)],x[np.argmax(_y)]])
-__y = np.
-plt.plot(_x, )
+plt.plot(_x, __y, color[0])
+plt.legend()
+#%%
+
+plt.plot(x, int_images[:,155,272])
+
+#%%
+interactive_image_player(int_images)
