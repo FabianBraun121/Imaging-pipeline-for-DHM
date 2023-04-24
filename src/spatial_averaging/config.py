@@ -66,7 +66,7 @@ IMPORTANT: Do not change the default parameters below. Update the .json files in
 """
 
 _DEFAULTS = dict(
-    focus_method = "sobel_squared_std",
+    focus_method = "minimal_amp_std",
     optimizing_method = "Powell",
     tolerance = None,
     reconstrution_distance_low = -3.0,
@@ -79,7 +79,7 @@ _DEFAULTS = dict(
     hconv = 794*1e-9/(2*_np.pi),
     unit_code = 1,
     bacteria_cut_off = 0.15,
-    koala_reset_frequency = 1
+    koala_reset_frequency = 10
 )
 
 def load_config(koala_config_nr: int = None, json_file: str = None, display_always_on: bool = False):

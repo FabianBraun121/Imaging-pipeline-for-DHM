@@ -1,0 +1,46 @@
+The user has to launch in spyder (F5) the code Average_and_propagation.py.
+
+Depending of acquisition and data, the user has to modify manually the beginning of the code.
+Each parameter is described below:
+
+Define the default directory to open
+default_dir = r'C:\'    
+
+The user and launch the averaging and the propagation process, it can be done successively or automatically.
+Propagation is necessary if the averging is performed out of the focus plane, or if the user want to perform an autofocus to focus the average data
+The assumption is that for a given well and a given time, the sample does not move in z!
+
+The parameters that can be adapted are explained below. One should be attentive that DHM parameters of the CCD pixel size and the wavelength has to be defined according to the DHM
+
+After performing the averaging, a new directory is created with "_avg_xxxx" at the end xxxx depends on the mode used for superpose data (phase or amplitude, used background, or use stage position)
+And after the propagation, another directory with the same name than for the averaging + _prop
+
+"""
+Parameters for the averaging
+"""
+#use_amplitude, if amplitude does not exist, message, if False, use the phase
+use_amplitude_for_shift = True
+shift_timeline = True #superpose data of the timeline data
+Use_ROI = False #use region of interest to measure the shift (a ROI for each well)
+unwrap = False #Perform path following unwrap on resulted averaged phase image
+UseScanValue = False #Use the stage position to perform superposition instead of shift algorithm
+use_background = False# works only if the displacement is quite large and to use only if there are lot of noise
+use_unwrap_for_shifting = True # is not used if amplitude is the critera, else it unwrap the reference image and the new image to shift
+
+"""
+Parameters for the propagation
+"""
+d = 0 #reconstruction distance in cm for all wells d = d_config-d_used for the acquisition (d_used=0 if reconstruction perform in holo plane)
+define_rec_dist = True #define manually or with autofocus the reconstruction distance for all wells 
+autofocus = True #perform autofocus for the first averaged wavefront of each well
+autofocus_each_time_line = True #if autofocus=True, perform autofocus for all timeline
+focusMethod = 1 #0=std, 1= Louis method
+range_focus_um = 5 #approximative range in micron of displacement of the sample to define the range of autofocus
+ROI = 750 #usual ROIxROI or reconstructed data, None do not perform ROI
+#ROI = None
+
+"""
+DHM parameters: constant that have to be defined from Koala (camera model, wavelength)
+"""
+CCD_px_size_um = 5.86 #pixel size of the CCD DHM camera (has to be the right one for autofocus !)
+lambda_nm = 666 #wavelength in nanometer of the DHM (has to be the right one for autofocus!)

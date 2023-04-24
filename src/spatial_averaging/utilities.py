@@ -38,8 +38,8 @@ def connect_to_remote_koala(ConfigNumber):
 
 def crop_image(image_array, crop_coords):
     # Extract the crop coordinates
-    ymin, ymax = crop_coords[0]
-    xmin, xmax = crop_coords[1]
+    ymin, ymax = crop_coords[0][0], crop_coords[0][1]
+    xmin, xmax = crop_coords[1][0], crop_coords[1][1]
     
     if xmin < xmax and ymin < ymax:
         return image_array[ymin:ymax, xmin:xmax]
@@ -49,14 +49,14 @@ def crop_image(image_array, crop_coords):
             cropped_left_right = image_array[:, xmin:xmax]
         else:
             cropped_left = image_array[:, xmin:]
-            cropped_right = image_array[:, :xmax]
+            cropped_right = image_array[:, :xmax+1]
             cropped_left_right = np.concatenate((cropped_left, cropped_right), axis=1)
         
         # Handle the y-direction
         if ymin < ymax:
             cropped_image = cropped_left_right[ymin:ymax, :]
         else:
-            cropped_top = cropped_left_right[:ymax, :]
+            cropped_top = cropped_left_right[:ymax+1, :]
             cropped_bottom = cropped_left_right[ymin:, :]
             cropped_image = np.concatenate((cropped_top, cropped_bottom), axis=0)
         

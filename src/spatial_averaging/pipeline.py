@@ -38,27 +38,31 @@ class Location:
         self.image_roi_selected: bool = False
         self.loc_image_roi: Mask = np.ones(cfg.image_size, dtype=np.uint8)
         self.recon_rectangle_selected: bool = False
-        self.loc_recon_corners: Tuple[Tuple[int, int], Tuple[int, int]] = None  #((ymin, ymax), (xmin, xmax))
+        self.loc_recon_corners: List[List[int]] = None  #((ymin, ymax), (xmin, xmax))
         
     def get_loc_image_roi(self) -> Mask:
         return self.loc_image_roi.copy()
+    
+    def get_loc_image_roi_corners(self) -> List[List[int]]:
+        if self.image_roi_selected:
+            non_zero_indices = np.nonzero(self.loc_image_roi)
+            [ymin, ymax] = [np.min(non_zero_indices[0]), np.max(non_zero_indices[0])]
+            [xmin, xmax] = [np.min(non_zero_indices[1]), np.max(non_zero_indices[1])]
+            return [[ymin, ymax], [xmin, xmax]]
+        else:
+            return [[0,cfg.image_size[0]],[0,cfg.image_size[1]]]
     
     def set_loc_image_roi(self, loc_image_roi: Mask):
         self.loc_image_roi = loc_image_roi.astype(np.uint8)
         self.image_roi_selected = True
     
-    def get_loc_recon_corners(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def get_loc_recon_corners(self) -> List[List[int]] :
         if self.loc_recon_corners is None:
-            if self.image_roi_selected:
-                non_zero_indices = np.nonzero(self.loc_image_roi)
-                (ymin, ymax) = (np.min(non_zero_indices[0]), np.max(non_zero_indices[0]))
-                (xmin, xmax) = (np.min(non_zero_indices[1]), np.max(non_zero_indices[1]))
-                self.loc_recon_corners = ((ymin, ymax), (xmin, xmax))
-            else:
-                self.loc_recon_corners = ((0,0),(cfg.image_size[0],cfg.image_size[1])) 
-        return self.loc_recon_corners
+            return self.get_loc_image_roi_corners()
+        else:
+            return self.loc_recon_corners
     
-    def set_loc_recon_corners(self, loc_recon_corners: Tuple[Tuple[int, int], Tuple[int, int]]):
+    def set_loc_recon_corners(self, loc_recon_corners: List[List[int]]):
         self.loc_recon_corners = loc_recon_corners
         self.recon_rectangle_selected = True
 
@@ -74,17 +78,20 @@ class Position:
         self.location = location
         self.pos_name: str = pos_dir.name
         self.pos_image_roi: Mask = None
-        self.pos_recon_corners: Tuple[Tuple[int, int], Tuple[int, int]] = location.get_loc_recon_corners()
-        self.shift_vector: Tuple[int, int] = (0,0)
+        self.pos_recon_corners: List[List[int]] = self.location.get_loc_image_roi_corners()
+        self.shift_vector: List[int] = [0,0]
         self.x0_guess: float = cfg.reconstruction_distance_guess
         self.X_plane: npt.NDArray[np.float64] = None
+        self.X_plane_pseudoinverse: npt.NDArray[np.float64] = None
         self.X_plane_image_roi: npt.NDArray[np.float64] = None
         self.X_plane_image_roi_pseudoinverse: npt.NDArray[np.float64] = None
-        self.X_plane_recon_rectangle: npt.NDArray[np.float64] = self._calculate_X_plane_recon_rectangle()
-        self.X_plane_recon_rectangle_pseudoinverse: npt.NDArray[np.float64] = self._calculate_X_plane_recon_rectangle_pseudoinverse()
         self.set_pos_image_roi()
         self._calculate_X_planes()
-        self._calculate_X_plane_image_roi_pseudoinverse()
+        self._calculate_X_planes_pseudoinverse()
+        # Before the shift_vector is estimated the full image is used for calculating the focus point
+        self.first_timestep: bool = True
+        self.X_plane_recon_rectangle: npt.NDArray[np.float64] = self.X_plane
+        self.X_plane_recon_rectangle_pseudoinverse: npt.NDArray[np.float64] = self.X_plane_pseudoinverse
     
     def _calculate_X_planes(self):
         ## Relevel all images with a plane before averaging. This removes most errors with missalignment due to DHM errors
@@ -103,26 +110,28 @@ class Position:
             self.X_plane_image_roi = self.X_plane
     
     def _calculate_X_plane_recon_rectangle(self):
-        heigth = self.pos_recon_corners[0][1]-self.pos_recon_corners[0][0]
-        width = self.pos_recon_corners[1][1]-self.pos_recon_corners[1][0]
+        heigth = (self.pos_recon_corners[0][1]-self.pos_recon_corners[0][0]) % (cfg.image_size[0]+1)
+        width = (self.pos_recon_corners[1][1]-self.pos_recon_corners[1][0]) % (cfg.image_size[0]+1)
         X1, X2 = np.mgrid[:heigth, :width]
         X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
         self.X_plane_recon_rectangle = PolynomialFeatures(degree=cfg.plane_fit_order, include_bias=True).fit_transform(X)
     
-    def _calculate_X_plane_image_roi_pseudoinverse(self):
+    def _calculate_X_planes_pseudoinverse(self):
+        if self.X_plane_pseudoinverse is None:
+            self.X_plane_pseudoinverse = np.dot(np.linalg.inv(np.dot(self.X_plane.transpose(), self.X_plane)), self.X_plane.transpose())
         if self.location.image_roi_selected or self.X_plane_image_roi_pseudoinverse is None:
             self.X_plane_image_roi_pseudoinverse = np.dot(np.linalg.inv(np.dot(self.X_plane_image_roi.transpose(), self.X_plane_image_roi)), self.X_plane_image_roi.transpose())
     
     def _calculate_X_plane_recon_rectangle_pseudoinverse(self):
-            self.X_plane_recon_rectangle_pseudoinverse = np.dot(np.linalg.inv(np.dot(self.X_plane_recon_rectangle.transpose(), self.X_plane_recon_rectangle)), self.X_plane_recon_rectangle.transpose())
+        self.X_plane_recon_rectangle_pseudoinverse = np.dot(np.linalg.inv(np.dot(self.X_plane_recon_rectangle.transpose(), self.X_plane_recon_rectangle)), self.X_plane_recon_rectangle.transpose())
         
     def get_pos_image_roi(self) -> Mask:
         return self.pos_image_roi.copy()
     
-    def get_pos_recon_corners(self) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def get_pos_recon_corners(self) -> List[List[int]]:
         return self.pos_recon_corners
     
-    def get_shift_vector(self) -> Tuple[int, int]:
+    def get_shift_vector(self) -> List[int]:
         return self.shift_vector
     
     def get_x0_guess(self) -> float:
@@ -147,17 +156,22 @@ class Position:
         self.pos_image_roi = ndimage.shift(self.location.get_loc_image_roi(), shift=self.shift_vector, mode='wrap')
             
     def set_pos_recon_corners(self):
-        self.pos_recon_corners[0][0] = (self.location.loc_recon_corners[0][0] + self.shift_vector[0]) % cfg.image_size[0]
-        self.pos_recon_corners[0][1] = (self.location.loc_recon_corners[0][1] + self.shift_vector[0]) % cfg.image_size[0]
-        self.pos_recon_corners[1][0] = (self.location.loc_recon_corners[1][0] + self.shift_vector[1]) % cfg.image_size[1]
-        self.pos_recon_corners[1][1] = (self.location.loc_recon_corners[1][1] + self.shift_vector[1]) % cfg.image_size[1]
+        self.pos_recon_corners[0][0] = int(self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[0],0)) % (cfg.image_size[0]+1)
+        self.pos_recon_corners[0][1] = int(self.location.get_loc_recon_corners()[0][1] + np.round(self.get_shift_vector()[0],0)) % (cfg.image_size[0]+1)
+        self.pos_recon_corners[1][0] = int(self.location.get_loc_recon_corners()[1][0] + np.round(self.get_shift_vector()[1],0)) % (cfg.image_size[1]+1)
+        self.pos_recon_corners[1][1] = int(self.location.get_loc_recon_corners()[1][1] + np.round(self.get_shift_vector()[1],0)) % (cfg.image_size[1]+1)
     
-    def set_shift_vector(self, shift_vector: Tuple[int, int]):
+    def set_shift_vector(self, shift_vector: List[int]):
         self.shift_vector = shift_vector
         self.set_pos_image_roi()
         self.set_pos_recon_corners()
         self._calculate_X_planes()
-        self._calculate_X_plane_image_roi_pseudoinverse()
+        self._calculate_X_planes_pseudoinverse()
+        if self.first_timestep:
+            self._calculate_X_plane_recon_rectangle()
+            self._calculate_X_plane_recon_rectangle_pseudoinverse()
+            self.first_timestep = False
+        
     
     def set_x0_guess(self, x0_guess: float):
         self.x0_guess = x0_guess
@@ -204,15 +218,24 @@ class Hologram:
         cfg.KOALA_HOST.SetRecDistCM(reconstruction_distance[0])
         cfg.KOALA_HOST.OnDistanceChange()
         ph = cfg.KOALA_HOST.GetPhase32fImage()
-        ph = crop_image(ph, self.position.get_pos_recon_corners())
-        ph = self._subtract_plane(ph)
-        if cfg.focus_method == 'Max_std_of_phase_squard':
-            # saves the phase of the hologram
-            ph *= ph
-            #returns the negativ since most optimizing function look for the Minimum
-            return -np.std(ph)
+        ph = self._subtract_plane_recon_rectangle(ph)
+        if cfg.focus_method == 'minimal_amp_std':
+            amp = cfg.KOALA_HOST.GetIntensity32fImage()
+            amp = self._subtract_plane_recon_rectangle(amp)
+            return np.std(amp)
         elif cfg.focus_method == 'sobel_squared_std':
+            ph = cfg.KOALA_HOST.GetPhase32fImage()
+            ph = self._subtract_plane_recon_rectangle(ph)
             return -self._evaluate_sobel_squared_std(ph)
+        elif cfg.focus_method == 'Luis_method':
+            amp = cfg.KOALA_HOST.GetIntensity32fImage()
+            amp = self._subtract_plane_recon_rectangle(amp)
+            ph = cfg.KOALA_HOST.GetPhase32fImage()
+            ph = self._subtract_plane_recon_rectangle(ph)
+            fx = -np.std(amp)
+            fx2 = np.std(ph)
+            fx *= fx2
+            return -fx
         else:
             print("Method ", cfg.focus_method, " to find the focus point is not implemented.")
     
@@ -230,15 +253,16 @@ class Hologram:
             self.cplx_image = self._cplx_image()
         return self.cplx_image.copy()
     
-    def _subtract_plane(self, field) -> CplxImage:
-        theta = np.dot(self.position.get_X_plane_roi_pseudoinverse(), field[self.position.get_pos_roi()==True].reshape(-1))
+    def _subtract_plane(self, field: Image) -> CplxImage:
+        theta = np.dot(self.position.get_X_plane_image_roi_pseudoinverse(), field[self.position.get_pos_image_roi()==True].reshape(-1))
         plane = np.dot(self.position.get_X_plane(), theta).reshape(field.shape[0], field.shape[1])
         return field-plane
     
-    def _subtract_plane_recon_rectangle(self, field) -> CplxImage:
-        theta = np.dot(self.position.get_X_plane_recon_rectangle_pseudoinverse(), crop_image(field, self.position.get_pos_recon_corners()).reshape(-1))
-        ymin, ymax = self.position.get_pos_recon_corners()[0]
-        plane = np.dot(self.position.get_X_plane_recon_rectangle(), theta).reshape((ymax-ymin)%cfg.image_size[0], -1)
+    def _subtract_plane_recon_rectangle(self, field: Image) -> CplxImage:
+        field = crop_image(field, self.position.get_pos_recon_corners())
+        theta = np.dot(self.position.get_X_plane_recon_rectangle_pseudoinverse(), field.reshape(-1))
+        ymin, ymax = self.position.get_pos_recon_corners()[0][0], self.position.get_pos_recon_corners()[0][1]
+        plane = np.dot(self.position.get_X_plane_recon_rectangle(), theta).reshape((ymax-ymin)%(cfg.image_size[0]+1), -1)
         return field-plane
 
 class SpatialPhaseAveraging:
@@ -263,7 +287,7 @@ class SpatialPhaseAveraging:
         for i in range(1, self.num_pos):
             cplx_image = self.holograms[i].get_cplx_image()
             cplx_image = self._subtract_bacterias(cplx_image)
-            cplx_image = self._subtract_phase_offset(cplx_image, background, self.positions[i].get_pos_roi())
+            cplx_image = self._subtract_phase_offset(cplx_image, background, self.positions[i].get_pos_image_roi())
             background += cplx_image
         return background/self.num_pos
     
@@ -275,7 +299,7 @@ class SpatialPhaseAveraging:
             cplx_image /= self.background
             cplx_image, shift_vector = self._shift_image(spatial_avg, cplx_image)
             self.positions[i].set_shift_vector(shift_vector)
-            cplx_image = self._subtract_phase_offset(cplx_image, spatial_avg, self.positions[i].get_pos_roi())
+            cplx_image = self._subtract_phase_offset(cplx_image, spatial_avg, self.positions[i].get_pos_image_roi())
             spatial_avg += cplx_image
         return spatial_avg/self.num_pos
     
@@ -296,7 +320,7 @@ class SpatialPhaseAveraging:
     def get_spatial_avg(self) -> CplxImage:
         return self.spatial_avg.copy()
     
-    def _shift_image(self, reference_image: CplxImage, moving_image: CplxImage) -> (CplxImage, Tuple[int, int]):
+    def _shift_image(self, reference_image: CplxImage, moving_image: CplxImage) -> (CplxImage, List[int]):
         shift_measured, error, diffphase = phase_cross_correlation(np.angle(reference_image), np.angle(moving_image), upsample_factor=10, normalization=None)
         shift_vector = (shift_measured[0],shift_measured[1])
         #interpolation to apply the computed shift (has to be performed on float array)
@@ -321,7 +345,6 @@ class SpatialPhaseAveraging:
         return new
 
 
-## TODO: First rough estimate position shift before recon_rectangle
 class Pipeline:
     def __init__(
             self,
@@ -340,6 +363,7 @@ class Pipeline:
         self.image_settings_updated: bool = False
         self.image_count: int = 0
         self.duration = []
+        self.focus_distances = []
         
     def _get_mask_from_rectangle(self, image: Image) -> Mask:
         # Show the image and wait for user to select a rectangle
@@ -357,7 +381,7 @@ class Pipeline:
         return mask
         
     
-    def _get_rectangle_coordinates(image: np.ndarray) -> Tuple[Tuple[int, int], Tuple[int, int]]:
+    def _get_rectangle_coordinates(self, image: Image) -> List[List[int]]:
         # Show the image and wait for user to select a rectangle
         cv2.imshow("Select a rectangle", image)
         rect = cv2.selectROI("Select a rectangle", image, False)
@@ -368,7 +392,7 @@ class Pipeline:
         ymin, ymax = y, y + h
         xmin, xmax = x, x + w
         
-        return ((ymin, ymax), (xmin, xmax))
+        return [[ymin, ymax], [xmin, xmax]]
 
     def _locations(self) -> List[Location]:
         all_locations = [ Location(Path(f.path)) for f in os.scandir(self.base_dir) if f.is_dir()]
@@ -395,6 +419,8 @@ class Pipeline:
                 if self.image_settings_updated:
                     cfg.set_image_variables((cfg.KOALA_HOST.GetPhaseWidth(),cfg.KOALA_HOST.GetPhaseHeight()), cfg.KOALA_HOST.GetPxSizeUm()*1e-6)
                     self.image_settings_updated = True
+                    
+                self.focus_distances.append([h.focus for h in spa.holograms])
                 
                 save_loc_folder = str(self.saving_dir) + os.sep + l.loc_name
                 if not os.path.exists(save_loc_folder):
@@ -403,7 +429,7 @@ class Pipeline:
                 binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
                 duration_timestep = np.round(time.time()-start_image,1)
                 print(fname, "done in", duration_timestep, "seconds")
-                self.duration.append([l.name, t, duration_timestep])
+                self.duration.append([l.loc_name, t, duration_timestep])
                 
                 self.image_count += 1
                 if self.image_count % cfg.koala_reset_frequency == 0:
@@ -454,3 +480,19 @@ class Pipeline:
             return all_timesteps
         else:
             return all_timesteps[self.restrict_timesteps]
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        
