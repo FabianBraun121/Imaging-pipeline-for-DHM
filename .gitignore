@@ -153,4 +153,5 @@ cython_debug/
 
 # Manual addition
 data/
-*images.npy
+*.npy
+*.hdf5

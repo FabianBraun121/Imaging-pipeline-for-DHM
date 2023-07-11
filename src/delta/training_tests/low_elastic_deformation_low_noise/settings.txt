@@ -1,0 +1,15 @@
+data_gen_args = dict(
+    rotation=2,
+    rotations_90d=True,
+    zoom=0.15,
+    horizontal_flip=True,
+    vertical_flip=True,
+    illumination_voodoo=True,
+    gaussian_noise=0.003,
+    gaussian_blur=0.1,
+    elastic_deformation={'sigma': 10, 'points': 3},
+)
+
+
+Results:
+loss: 28.6617 - unstack_acc: 0.9989

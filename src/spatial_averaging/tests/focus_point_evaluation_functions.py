@@ -20,28 +20,24 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn.preprocessing import PolynomialFeatures
 import scipy.ndimage
+from  pyKoalaRemote import client
 import cv2
     
 #%%
-# Add Koala remote librairies to Path
-sys.path.append(r'C:\Program Files\LynceeTec\Koala\Remote\Remote Libraries\x64')
-# Import KoalaRemoteClient
-clr.AddReference("LynceeTec.KoalaRemote.Client")
-from LynceeTec.KoalaRemote.Client import KoalaRemoteClient
-ConfigNumber = 221
+ConfigNumber=221
 # Define KoalaRemoteClient host
-host=KoalaRemoteClient()
+host = client.pyKoalaRemoteClient()
 #Ask IP address
 IP = 'localhost'
 # Log on Koala - default to admin/admin combo
-username = 'admin'
-[ret,username] = host.Connect(IP,username,True);
+host.Connect(IP)
 host.Login('admin')
 # Open config
-host.OpenConfig(ConfigNumber);
+host.OpenConfig(ConfigNumber)
 host.OpenPhaseWin()
 host.OpenIntensityWin()
 host.OpenHoloWin()
+
 #%%
 
         
@@ -142,6 +138,15 @@ def evaluate_fuzzy_entropy(image):
 
     return fuzzy_entropy
 
+def evaluate_min_int_std(amp):
+    return np.std(amp)
+
+def evaluate_luis(amp, ph):
+    fx = -np.std(amp)
+    fx2 = np.std(ph)
+    fx *= fx2
+    return -fx
+
 
 #%%
 ### Load this if only interested in restricted area of -3,1
@@ -161,14 +166,16 @@ x = np.zeros(900)
 fname = save_path + r"\00000_holo.tif"
 host.LoadHolo(fname,1)
 images = np.zeros((x.shape[0],800,800))
-y_std = np.zeros(x.shape[0])
-y_squared_std = np.zeros(x.shape[0])
-y_entropy = np.zeros(x.shape[0])
-y_sobel = np.zeros(x.shape[0])
-y_sobel_squared_avg = np.zeros(x.shape[0])
-y_sobel_squared_std = np.zeros(x.shape[0])
-y_laplace_squared_std = np.zeros(x.shape[0])
-y_fuzzy_entropy = np.zeros(x.shape[0])
+# y_std = np.zeros(x.shape[0])
+# y_squared_std = np.zeros(x.shape[0])
+# y_entropy = np.zeros(x.shape[0])
+# y_sobel = np.zeros(x.shape[0])
+# y_sobel_squared_avg = np.zeros(x.shape[0])
+# y_sobel_squared_std = np.zeros(x.shape[0])
+# y_laplace_squared_std = np.zeros(x.shape[0])
+# y_fuzzy_entropy = np.zeros(x.shape[0])
+y_min_int_std = np.zeros(x.shape[0])
+y_luis = np.zeros(x.shape[0])
 for i in range(x.shape[0]):
     if bounded:
         xi = -3+i*0.01
@@ -177,30 +184,35 @@ for i in range(x.shape[0]):
     x[i] = xi
     host.SetRecDistCM(xi)
     host.OnDistanceChange()
-    host.SaveImageFloatToFile(4,r'C:\Master_Thesis_Fabian_Braun\Data\test.bin',True)
-    image_values, header = binkoala.read_mat_bin(r'C:\Master_Thesis_Fabian_Braun\Data\test.bin')
-    img = subtract_plane(image_values, 3)
-    images[i] = img
-    y_std[i] = -evaluate_reconstruction_distance_minus_std(img)
-    y_squared_std[i] = -evaluate_reconstruction_distance_minus_squared_std(img)
-    y_entropy[i] = evaluate_entropy(img)
-    y_sobel[i] = evaluate_sobel(img)
-    y_sobel_squared_avg[i] = evaluate_sobel_squared_avg(img)
-    y_sobel_squared_std[i] = evaluate_sobel_squared_std(img)
-    y_laplace_squared_std[i] = evaluate_laplace_squared_std(img)
-    y_fuzzy_entropy[i] = evaluate_fuzzy_entropy(img)
-        
+    amp = host.GetIntensity32fImage()
+    amp = subtract_plane(amp, 3)
+    ph = host.GetIntensity32fImage()
+    ph = subtract_plane(ph, 3)
+    images[i] = ph
+    # y_std[i] = -evaluate_reconstruction_distance_minus_std(ph)
+    # y_squared_std[i] = -evaluate_reconstruction_distance_minus_squared_std(ph)
+    # y_entropy[i] = evaluate_entropy(ph)
+    # y_sobel[i] = evaluate_sobel(ph)
+    # y_sobel_squared_avg[i] = evaluate_sobel_squared_avg(ph)
+    # y_sobel_squared_std[i] = evaluate_sobel_squared_std(ph)
+    # y_laplace_squared_std[i] = evaluate_laplace_squared_std(ph)
+    # y_fuzzy_entropy[i] = evaluate_fuzzy_entropy(ph)
+    y_min_int_std[i] = evaluate_min_int_std(amp)
+    y_luis[i] = evaluate_luis(amp,ph)
+    
     print(x[i], " done")
 np.save(save_path+'/x', x)
 np.save(save_path+'/images', images)
-np.save(save_path+'/y_std', y_std)
-np.save(save_path+'/y_squared_std', y_squared_std)
-np.save(save_path+'/y_entropy', y_entropy)
-np.save(save_path+'/y_sobel', y_sobel)
-np.save(save_path+'/y_sobel_squared_avg', y_sobel_squared_avg)
-np.save(save_path+'/y_sobel_squared_std', y_sobel_squared_std)
-np.save(save_path+'/y_laplace_squared_std', y_laplace_squared_std)
-np.save(save_path+'/y_fuzzy_entropy', y_fuzzy_entropy)
+# np.save(save_path+'/y_std', y_std)
+# np.save(save_path+'/y_squared_std', y_squared_std)
+# np.save(save_path+'/y_entropy', y_entropy)
+# np.save(save_path+'/y_sobel', y_sobel)
+# np.save(save_path+'/y_sobel_squared_avg', y_sobel_squared_avg)
+# np.save(save_path+'/y_sobel_squared_std', y_sobel_squared_std)
+# np.save(save_path+'/y_laplace_squared_std', y_laplace_squared_std)
+# np.save(save_path+'/y_fuzzy_entropy', y_fuzzy_entropy)
+np.save(save_path+'/y_min_int_std', y_min_int_std)
+np.save(save_path+'/y_luis', y_luis)
 #%%
 ########################## load results of test ##########################
 x = np.load(save_path+'/x.npy')
@@ -213,6 +225,8 @@ y_sobel_squared_avg = np.load(save_path+'/y_sobel_squared_avg.npy')
 y_sobel_squared_std = np.load(save_path+'/y_sobel_squared_std.npy')
 y_laplace_squared_std = np.load(save_path+'/y_laplace_squared_std.npy')
 y_fuzzy_entropy = np.load(save_path+'/y_fuzzy_entropy.npy')
+y_min_int_std = np.load(save_path+'/y_min_int_std.npy')
+y_luis = np.load(save_path+'/y_luis.npy')
 #%%
 plt.figure("all_functions_normalized")
 plt.plot(x, min_max_normalization(y_std), label="y_std")
@@ -223,6 +237,8 @@ plt.plot(x, min_max_normalization(y_sobel_squared_avg), label="y_sobel_squared_a
 plt.plot(x, min_max_normalization(y_sobel_squared_std), label="y_sobel_squared_std")
 plt.plot(x, min_max_normalization(y_laplace_squared_std), label="y_laplace_squared_std")
 plt.plot(x, min_max_normalization(y_fuzzy_entropy), label="y_fuzzy_entropy")
+plt.plot(x, min_max_normalization(y_min_int_std), label="y_min_int_std")
+plt.plot(x, min_max_normalization(y_luis), label="y_luis")
 plt.xlabel("lengths [cm]")
 plt.title("std of different reconstruction lengths")
 plt.legend()
@@ -285,6 +301,22 @@ plt.plot(x, y_fuzzy_entropy)
 plt.xlabel("lengths [cm]")
 plt.title("fuzzy entropy of different reconstruction lengths")
 plt.savefig(save_path+"/y_fuzzy_entropy", dpi=300)
+plt.show()
+
+#%%
+plt.figure("y_min_int_std")
+plt.plot(x, y_min_int_std)
+plt.xlabel("lengths [cm]")
+plt.title("y_min_int_std of different reconstruction lengths")
+plt.savefig(save_path+"/y_min_int_std", dpi=300)
+plt.show()
+
+#%%
+plt.figure("y_luis")
+plt.plot(x, y_luis)
+plt.xlabel("lengths [cm]")
+plt.title("y_luis of different reconstruction lengths")
+plt.savefig(save_path+"/y_luis", dpi=300)
 plt.show()
     
 #%%
@@ -393,7 +425,7 @@ def interactive_image_player(frames, frame_dist=None, frame_func_eval=None):
     # Show the plot
     plt.show()
 #%%
-interactive_image_player(images, x, y_sobel_squared_std*1000)
+interactive_image_player(images, x, y_luis)
 
 
 

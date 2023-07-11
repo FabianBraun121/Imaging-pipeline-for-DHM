@@ -8,7 +8,7 @@ Modified 2023.03.22 : Add computation shift with unwrapped phase
 """
 import ProcessClass, ProcessPropClass
 
-default_dir = r'C:\Users\Tristan Colomb\Desktop\test_avg_from_timestamps\(B) 2023-01-17.2x3'
+default_dir = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM'
 
 
 """
@@ -35,17 +35,17 @@ Parameters for the propagation
 d = -0.0 #reconstruction distance in cm for all wells d = d_config-d_used for the acquisition (d_used=0 if reconstruction perform in holo plane)
 define_rec_dist = True #define manually or with autofocus the reconstruction distance for all wells 
 autofocus = False #perform autofocus for the first averaged wavefront of each well
-autofocus_each_time_line = True#if autofocus=True, perform autofocus for all timeline
+autofocus_each_time_line = False#if autofocus=True, perform autofocus for all timeline
 focusMethod = 1 #0=std, 1= Louis method
 range_focus_um = 20 #approximative range in micron of displacement of the sample to define the range of autofocus
-ROI = 750 #usual ROIxROI or reconstructed data, None do not perform ROI
+ROI = 1000 #usual ROIxROI or reconstructed data, None do not perform ROI
 ROI = None
 
 """
 DHM parameters: constant that have to be defined from Koala (camera model, wavelength)
 """
-CCD_px_size_um = 5.86 #pixel size of the CCD DHM camera (has to be the right one for autofocus !)
-lambda_nm = 666 #wavelength in nanometer of the DHM (has to be the right one for autofocus!)
+CCD_px_size_um = 0.13 #pixel size of the CCD DHM camera (has to be the right one for autofocus !)
+lambda_nm = 794 #wavelength in nanometer of the DHM (has to be the right one for autofocus!)
 
 
 """
@@ -82,7 +82,4 @@ if perform_propagation:
         Propagation.Open_Directory(default_dir, "Open an averaging directory")
     if Propagation.set_directory():
         Propagation.process_all_wells()
-
-
-
 

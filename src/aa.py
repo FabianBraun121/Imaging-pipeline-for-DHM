@@ -57,6 +57,7 @@ def find_image_position(screenshot, image, threshold=0.95):
 
 #%%
 display = SmartDisplay(visible=1, size=(1600, 900))
+#%%
 display.start()
 os.environ['DISPLAY'] = ':0'
 
@@ -65,3 +66,6 @@ open_koala()
 
 
 #display.stop()
+#%%
+import os
+os.environ['DISPLAY'] = 'localhost:0.0'

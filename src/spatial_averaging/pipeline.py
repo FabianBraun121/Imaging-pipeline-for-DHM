@@ -172,7 +172,6 @@ class Position:
             self._calculate_X_plane_recon_rectangle_pseudoinverse()
             self.first_timestep = False
         
-    
     def set_x0_guess(self, x0_guess: float):
         self.x0_guess = x0_guess
     
@@ -217,25 +216,18 @@ class Hologram:
     def _evaluate_reconstruction_distance(self, reconstruction_distance) -> float:
         cfg.KOALA_HOST.SetRecDistCM(reconstruction_distance[0])
         cfg.KOALA_HOST.OnDistanceChange()
-        ph = cfg.KOALA_HOST.GetPhase32fImage()
-        ph = self._subtract_plane_recon_rectangle(ph)
-        if cfg.focus_method == 'minimal_amp_std':
+        if cfg.focus_method == 'std_amp':
             amp = cfg.KOALA_HOST.GetIntensity32fImage()
-            amp = self._subtract_plane_recon_rectangle(amp)
             return np.std(amp)
         elif cfg.focus_method == 'sobel_squared_std':
             ph = cfg.KOALA_HOST.GetPhase32fImage()
             ph = self._subtract_plane_recon_rectangle(ph)
             return -self._evaluate_sobel_squared_std(ph)
-        elif cfg.focus_method == 'Luis_method':
+        elif cfg.focus_method == 'combined':
             amp = cfg.KOALA_HOST.GetIntensity32fImage()
-            amp = self._subtract_plane_recon_rectangle(amp)
             ph = cfg.KOALA_HOST.GetPhase32fImage()
             ph = self._subtract_plane_recon_rectangle(ph)
-            fx = -np.std(amp)
-            fx2 = np.std(ph)
-            fx *= fx2
-            return -fx
+            return -np.std(ph)/np.std(amp)
         else:
             print("Method ", cfg.focus_method, " to find the focus point is not implemented.")
     
@@ -299,6 +291,7 @@ class SpatialPhaseAveraging:
             cplx_image /= self.background
             cplx_image, shift_vector = self._shift_image(spatial_avg, cplx_image)
             self.positions[i].set_shift_vector(shift_vector)
+            print(shift_vector)
             cplx_image = self._subtract_phase_offset(cplx_image, spatial_avg, self.positions[i].get_pos_image_roi())
             spatial_avg += cplx_image
         return spatial_avg/self.num_pos
@@ -324,8 +317,8 @@ class SpatialPhaseAveraging:
         shift_measured, error, diffphase = phase_cross_correlation(np.angle(reference_image), np.angle(moving_image), upsample_factor=10, normalization=None)
         shift_vector = (shift_measured[0],shift_measured[1])
         #interpolation to apply the computed shift (has to be performed on float array)
-        real = ndimage.shift(np.real(moving_image), shift=shift_vector, mode='wrap')
-        imaginary = ndimage.shift(np.imag(moving_image), shift=shift_vector, mode='wrap')
+        real = ndimage.shift(np.real(moving_image), shift=shift_vector, mode='constant')
+        imaginary = ndimage.shift(np.imag(moving_image), shift=shift_vector, mode='constant')
         return real+complex(0.,1.)*imaginary, shift_vector
     
     def _subtract_bacterias(self, cplx_image: CplxImage) -> CplxImage:

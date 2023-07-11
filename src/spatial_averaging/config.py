@@ -66,7 +66,7 @@ IMPORTANT: Do not change the default parameters below. Update the .json files in
 """
 
 _DEFAULTS = dict(
-    focus_method = "minimal_amp_std",
+    focus_method = "std_amp",
     optimizing_method = "Powell",
     tolerance = None,
     reconstrution_distance_low = -3.0,
