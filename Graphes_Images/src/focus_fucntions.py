@@ -122,7 +122,7 @@ for i, focus in enumerate(foci):
     amp_images[i] = amp_image_small[50:150,50:150]
     
 #%%
-plot_image_series(amp_images)
+plot_image_series(ph_images)
 
 #%%
 
