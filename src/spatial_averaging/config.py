@@ -57,8 +57,6 @@ hconv: float = 0.0
 
 unit_code : int = 0
 
-bacteria_cut_off: float = 0.0
-
 koala_reset_frequency: int = 0
 
 """
@@ -78,7 +76,6 @@ _DEFAULTS = dict(
     px_size = 0.12976230680942535*1e-6,
     hconv = 794*1e-9/(2*_np.pi),
     unit_code = 1,
-    bacteria_cut_off = 0.15,
     koala_reset_frequency = 10
 )
 

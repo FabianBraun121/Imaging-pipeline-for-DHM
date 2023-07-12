@@ -187,7 +187,7 @@ class Hologram:
         self.position: Position = position
         self.focus: float = focus # Focus distance
         self.focus_score: float = None # score of evaluatino function at the Focus point (minimum)
-        self.cplx_image: Image = None # as soon as the focus point is found this function is evaluated
+        self.cplx_image: CplxImage = None # as soon as the focus point is found this function is evaluated
     
     def calculate_focus(self):
         cfg.KOALA_HOST.LoadHolo(str(self.fname),1)
@@ -211,7 +211,7 @@ class Hologram:
             cplx_image = amp*np.exp(complex(0.,1.)*ph)
         else:
             cplx_image = np.exp(complex(0.,1.)*ph)
-        return cplx_image
+        return cplx_image.astype(np.complex64)
     
     def _evaluate_reconstruction_distance(self, reconstruction_distance) -> float:
         cfg.KOALA_HOST.SetRecDistCM(reconstruction_distance[0])
@@ -274,14 +274,10 @@ class SpatialPhaseAveraging:
     
     
     def _background(self) -> CplxImage:
-        background = self.holograms[0].get_cplx_image()
-        background = self._subtract_bacterias(background)
-        for i in range(1, self.num_pos):
-            cplx_image = self.holograms[i].get_cplx_image()
-            cplx_image = self._subtract_bacterias(cplx_image)
-            cplx_image = self._subtract_phase_offset(cplx_image, background, self.positions[i].get_pos_image_roi())
-            background += cplx_image
-        return background/self.num_pos
+            background = np.zeros((len(self.holograms), cfg.image_size[0], cfg.image_size[1]), dtype=np.complex64)
+            for i in range(len(self.holograms)):
+                background[i] = self.holo_list_in_use[i].get_cplx_image()
+            return (np.median(np.abs(background), axis=0)*np.exp(1j*np.median(np.angle(background), axis=0))).astype(np.complex64)
     
     def _spatial_avg(self) -> CplxImage:
         spatial_avg = self.holograms[0].get_cplx_image()
@@ -320,13 +316,6 @@ class SpatialPhaseAveraging:
         real = ndimage.shift(np.real(moving_image), shift=shift_vector, mode='constant')
         imaginary = ndimage.shift(np.imag(moving_image), shift=shift_vector, mode='constant')
         return real+complex(0.,1.)*imaginary, shift_vector
-    
-    def _subtract_bacterias(self, cplx_image: CplxImage) -> CplxImage:
-        # subtracts pixel  that are far away from the mean and replaces them with the mean of the image
-        # cut off value is determined by hand and has to be reestimated for different use cases
-        ph = np.angle(cplx_image)
-        ph[cfg.bacteria_cut_off<ph] = np.mean(ph[ph<cfg.bacteria_cut_off])
-        return np.absolute(cplx_image)*np.exp(1j*ph)
         
     def _subtract_phase_offset(self, new: CplxImage, avg: CplxImage, mask: Mask) -> CplxImage:
         z= np.angle(np.multiply(new[mask==True],np.conj(avg[mask==True]))) #phase differenc between actual phase and avg_cplx phase

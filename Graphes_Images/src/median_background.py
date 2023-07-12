@@ -281,6 +281,21 @@ np.save(save_path + os.sep + 'background_median', background_median)
 np.save(save_path + os.sep + 'avg_median', avg_median)
 
 #%%
+
+background_mean_with_bacterias = np.load(save_path + os.sep + 'background_mean_with_bacterias.npy')
+avg_mean_with_bacterias = np.load(save_path + os.sep + 'avg_mean_with_bacterias.npy')
+background_mean_without_bacterias = np.load(save_path + os.sep + 'background_mean_without_bacterias.npy')
+avg_mean_without_bacterias = np.load(save_path + os.sep + 'avg_mean_without_bacterias.npy')
+background_median = np.load(save_path + os.sep + 'background_median.npy')
+avg_median = np.load(save_path + os.sep + 'avg_median.npy')
+
+#%%
+
+plt.figure('background mean_with_bacterias - median')
+plt.imshow(np.angle(background_mean_with_bacterias)-np.angle(background_median))
+plt.figure('background mean_without_bacterias - median')
+plt.imshow(np.angle(background_mean_without_bacterias)-np.angle(background_median))
+
 plt.figure('avg_median')
 plt.imshow(np.angle(avg_median))
 plt.figure('avg_mean_without_bacterias')
