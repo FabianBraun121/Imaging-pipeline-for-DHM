@@ -13,6 +13,7 @@ from sklearn.preprocessing import PolynomialFeatures
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.colors as mcolors
 import cv2
 from matplotlib.widgets import Slider
 
@@ -115,36 +116,41 @@ host.LoadHolo(holo_path,1)
 host.SetUnwrap2DState(True)
 #%%
 foci = np.arange(-3.3, -1.3, 0.01)
-images = np.zeros((len(foci), 200, 200))
+ph_images = np.zeros((len(foci), 200, 200))
+amp_images = np.zeros((len(foci), 200, 200))
 for i, focus in enumerate(foci):
     host.SetRecDistCM(focus)
     host.OnDistanceChange()
-    image = host.GetPhase32fImage()
-    image_small = image[93:293,387:587]
-    image_small = subtract_plane(image_small, 3, ignore_region=[[50, 150], [50, 150]])
-    images[i] = image_small
+    ph_image = host.GetPhase32fImage()
+    amp_image = host.GetIntensity32fImage()
+    ph_image_small = ph_image[93:293,387:587]
+    ph_image_small = subtract_plane(ph_image_small, 3, ignore_region=[[50, 150], [50, 150]])
+    ph_images[i] = ph_image_small
+    amp_image_small = amp_image[93:293,387:587]
+    amp_image_small = subtract_plane(amp_image_small, 3, ignore_region=[[50, 150], [50, 150]])
+    amp_images[i] = amp_image_small
 #%%
 refractive_index = 0.06
 V_bead = 4/3*np.pi*1**3
 theoretical_size = V_bead*refractive_index
 plt.figure('size integal')
-plt.plot(foci, np.sum(images[:,50:150,50:150], axis=(1,2))*0.794/(2*np.pi)*0.13**2)
-plt.plot(foci, np.ones_like(foci)*theoretical_size, 'r')
+y = np.sum(ph_images[:,50:150,50:150], axis=(1,2))*0.794/(2*np.pi)*0.13**2
+plt.plot(foci, y, label='test')
+plt.plot(foci, np.ones_like(foci)*theoretical_size, label='theory')
+plt.plot(np.ones(2)*foci[np.argmin(np.std(amp_images, axis=(1,2)))], [np.min(y), np.max(y)], label='min std amp')
+plt.xlabel('focus distance [cm]')
+plt.ylabel('integrated geometrical path length [$µm^3$]')
+plt.legend()
+#%%
+plot_image_series(ph_images)
 
 #%%
-plot_image_series(images)
-
-#%%
-import matplotlib.colors as mcolors
-
-
 # Generate a colormap with 20 colors using 'viridis'
 cmap = plt.cm.get_cmap('viridis')
-
 # Create a list of 20 colors from the colormap
 num_colors = 10
 colors = [mcolors.to_hex(cmap(i)) for i in np.linspace(0, 1, num_colors)]
 for i in range(10):
-    y_max = np.argmax(images[i*20,50:150,50:150])%100
-    plt.plot(images[i*20,y_max+50,50:150], colors[i], label=f'{np.round(foci[i*20],2)}')
+    y_max = np.argmax(np.std(ph_images[i*20,50:150,50:150], axis=1))
+    plt.plot(ph_images[i*20,y_max+50,50:150], colors[i], label=f'{np.round(foci[i*20],2)}')
 plt.legend()

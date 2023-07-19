@@ -1,14 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Mar  9 11:51:04 2023
+Created on Fri Jul 14 16:50:58 2023
 
 @author: SWW-Bc20
-"""
-"""
-summary of results:
-The initial idea was to measure the signal with the standard deviation. Since if
-a bacteria is shown with a good resolution,
-
 """
 import os
 import clr
@@ -24,7 +18,7 @@ from  pyKoalaRemote import client
 import cv2
     
 #%%
-ConfigNumber=221
+ConfigNumber=234
 # Define KoalaRemoteClient host
 host = client.pyKoalaRemoteClient()
 #Ask IP address
@@ -39,53 +33,20 @@ host.OpenIntensityWin()
 host.OpenHoloWin()
 
 #%%
-
-        
 def min_max_normalization(y):
     return (y-np.min(y))/(np.max(y)-np.min(y))
 
-def subtract_plane(field, plane_degree):
-    X1, X2 = np.mgrid[:field.shape[0], :field.shape[1]]
-    X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
-    X = PolynomialFeatures(degree=plane_degree, include_bias=False).fit_transform(X)
-    y = field.reshape(-1)
-    reg = LinearRegression().fit(X, y)
-    plane = reg.predict(X).reshape(field.shape[0],field.shape[1])
-    return field - plane
+def generate_X_and_pseudoinverse(field_shape, plane_degree):
+    X1, X2 = np.mgrid[:field_shape[0], :field_shape[1]]
+    X = np.hstack((X1.reshape(-1,1), X2.reshape(-1,1)))
+    X = PolynomialFeatures(degree=plane_degree, include_bias=True).fit_transform(X)
+    pseudoinverse = np.dot( np.linalg.inv(np.dot(X.transpose(), X)), X.transpose())
+    return X, pseudoinverse
 
-def evaluate_reconstruction_distance_minus_std(img):
-    return -np.std(img)
-
-def evaluate_reconstruction_distance_minus_squared_std(img):
-    img *= img
-    return -np.std(img)
-
-def evaluate_entropy(img):
-    marg = np.histogramdd(np.ravel(img), bins = 256)[0]/img.size
-    marg = list(filter(lambda p: p > 0, np.ravel(marg)))
-    entropy = -np.sum(np.multiply(marg, np.log2(marg)))
-    return entropy
-
-def evaluate_sobel(gray_image):
-    # Calculate gradient magnitude using Sobel filter
-    grad_x = scipy.ndimage.sobel(gray_image, axis=0)
-    grad_y = scipy.ndimage.sobel(gray_image, axis=1)
-    grad_mag = np.sqrt(grad_x ** 2 + grad_y ** 2)
-    
-    # Calculate average sobel sharpness score as the average gradient magnitude
-    avg_sobel_sharpness = np.average(grad_mag)
-    
-    return avg_sobel_sharpness
-
-def evaluate_sobel_squared_avg(gray_image):
-    # Calculate gradient magnitude using Sobel filter
-    grad_x = scipy.ndimage.sobel(gray_image, axis=0)
-    grad_y = scipy.ndimage.sobel(gray_image, axis=1)
-    
-    # Calculate average squared sobel sharpness score
-    avg_sobel_sharpness_squared = np.average(grad_x ** 2 + grad_y ** 2)
-    
-    return avg_sobel_sharpness_squared
+def subtract_plane_X_precomputed(X, pseudoinverse, field):
+    theta = np.dot(pseudoinverse, field.reshape(-1))
+    plane = np.dot(X, theta).reshape(field.shape[0], field.shape[1])
+    return field-plane
 
 def evaluate_sobel_squared_std(gray_image):
     # Calculate gradient magnitude using Sobel filter
@@ -95,57 +56,13 @@ def evaluate_sobel_squared_std(gray_image):
     # Calculate std squared sobel sharpness score
     std_sobel_sharpness_squared = np.std(grad_x ** 2 + grad_y ** 2)
     
-    return std_sobel_sharpness_squared
+    return -std_sobel_sharpness_squared
 
-def evaluate_laplace_squared_std(gray_image):
-    # Calculate gradient magnitude using Laplace filter
-    secand_derivative = scipy.ndimage.laplace(gray_image)
-    # Calculate std squared laplace sharpness score
-    return np.std(secand_derivative**2)
-
-def evaluate_fuzzy_entropy(image):
-    # rescale image
-    image = image*255
-    
-    # Calculate the gradient magnitude using Sobel filter
-    gx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=3)
-    gy = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=3)
-    gradient_mag = np.sqrt(gx**2 + gy**2)
-
-    # Calculate the standard deviation of gradient magnitude
-    gradient_std = np.std(gradient_mag)
-
-    # Calculate fuzzy entropy
-    fuzzy_entropy = 0
-    for threshold in range(256):
-        # Create a binary image based on threshold
-        binary_image = (image > threshold).astype('float32')
-
-        # Calculate the gradient magnitude of binary image
-        gx = cv2.Sobel(binary_image, cv2.CV_64F, 1, 0, ksize=3)
-        gy = cv2.Sobel(binary_image, cv2.CV_64F, 0, 1, ksize=3)
-        gradient_mag = np.sqrt(gx**2 + gy**2)
-
-        # Calculate the standard deviation of gradient magnitude
-        binary_gradient_std = np.std(gradient_mag)
-
-        # Calculate the membership function
-        membership = np.exp(-(binary_gradient_std**2) / (gradient_std**2))
-
-        # Add to fuzzy entropy
-        if membership > 0:
-            fuzzy_entropy += - membership * np.log2(membership)
-
-    return fuzzy_entropy
-
-def evaluate_min_int_std(amp):
+def evaluate_min_amp_std(amp):
     return np.std(amp)
 
-def evaluate_luis(amp, ph):
-    fx = -np.std(amp)
-    fx2 = np.std(ph)
-    fx *= fx2
-    return -fx
+def evaluate_combined(amp, ph):
+    return -np.std(ph)/np.std(amp)
 
 
 #%%
@@ -153,173 +70,121 @@ def evaluate_luis(amp, ph):
 save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\focus_point_evaluation_functions'
 if not os.path.exists(save_path):
     os.makedirs(save_path)
-bounded = True
 x = np.zeros(400)
+holos = [holo for holo in os.listdir(save_path) if holo.endswith('.tif')][:4]
 #%%
-### Load this if only interested in full range
-save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\focus_point_evaluation_functions_full_range'
-if not os.path.exists(save_path):
-    os.makedirs(save_path)
-bounded = False
-x = np.zeros(900)
+
+ph_images = np.zeros((len(holos), x.shape[0],800,800))
+amp_images = np.zeros((len(holos), x.shape[0],800,800))
+y_sobel_squared_std = np.zeros((len(holos), x.shape[0]))
+y_min_amp_std =np.zeros((len(holos), x.shape[0]))
+y_combined = np.zeros((len(holos), x.shape[0]))
+X, pseudoinverse = generate_X_and_pseudoinverse((800,800), 4)
+for i in range(len(holos)):
+    fname = save_path + os.sep + holos[i]
+    host.LoadHolo(fname,1)
+    host.SetUnwrap2DState(True)
+    for j in range(x.shape[0]):
+        xj = -3.5+j*0.01
+        x[j] = xj
+        host.SetRecDistCM(xj)
+        host.OnDistanceChange()
+        ph = host.GetPhase32fImage()
+        ph = subtract_plane_X_precomputed(X, pseudoinverse, ph)
+        amp = host.GetIntensity32fImage()
+        amp = subtract_plane_X_precomputed(X, pseudoinverse, amp)
+        ph_images[i,j] = ph
+        amp_images[i,j] = amp
+        y_sobel_squared_std[i, j] = evaluate_sobel_squared_std(ph)
+        y_min_amp_std[i, j] = evaluate_min_amp_std(amp)
+        y_combined[i, j] = evaluate_combined(amp,ph)
+        
+    print(fname, " done")
 #%%
-fname = save_path + r"\00000_holo.tif"
-host.LoadHolo(fname,1)
-images = np.zeros((x.shape[0],800,800))
-# y_std = np.zeros(x.shape[0])
-# y_squared_std = np.zeros(x.shape[0])
-# y_entropy = np.zeros(x.shape[0])
-# y_sobel = np.zeros(x.shape[0])
-# y_sobel_squared_avg = np.zeros(x.shape[0])
-# y_sobel_squared_std = np.zeros(x.shape[0])
-# y_laplace_squared_std = np.zeros(x.shape[0])
-# y_fuzzy_entropy = np.zeros(x.shape[0])
-y_min_int_std = np.zeros(x.shape[0])
-y_luis = np.zeros(x.shape[0])
-for i in range(x.shape[0]):
-    if bounded:
-        xi = -3+i*0.01
-    else:
-        xi = -45+i*0.1
-    x[i] = xi
-    host.SetRecDistCM(xi)
-    host.OnDistanceChange()
-    amp = host.GetIntensity32fImage()
-    amp = subtract_plane(amp, 3)
-    ph = host.GetIntensity32fImage()
-    ph = subtract_plane(ph, 3)
-    images[i] = ph
-    # y_std[i] = -evaluate_reconstruction_distance_minus_std(ph)
-    # y_squared_std[i] = -evaluate_reconstruction_distance_minus_squared_std(ph)
-    # y_entropy[i] = evaluate_entropy(ph)
-    # y_sobel[i] = evaluate_sobel(ph)
-    # y_sobel_squared_avg[i] = evaluate_sobel_squared_avg(ph)
-    # y_sobel_squared_std[i] = evaluate_sobel_squared_std(ph)
-    # y_laplace_squared_std[i] = evaluate_laplace_squared_std(ph)
-    # y_fuzzy_entropy[i] = evaluate_fuzzy_entropy(ph)
-    y_min_int_std[i] = evaluate_min_int_std(amp)
-    y_luis[i] = evaluate_luis(amp,ph)
-    
-    print(x[i], " done")
 np.save(save_path+'/x', x)
-np.save(save_path+'/images', images)
-# np.save(save_path+'/y_std', y_std)
-# np.save(save_path+'/y_squared_std', y_squared_std)
-# np.save(save_path+'/y_entropy', y_entropy)
-# np.save(save_path+'/y_sobel', y_sobel)
-# np.save(save_path+'/y_sobel_squared_avg', y_sobel_squared_avg)
-# np.save(save_path+'/y_sobel_squared_std', y_sobel_squared_std)
-# np.save(save_path+'/y_laplace_squared_std', y_laplace_squared_std)
-# np.save(save_path+'/y_fuzzy_entropy', y_fuzzy_entropy)
-np.save(save_path+'/y_min_int_std', y_min_int_std)
-np.save(save_path+'/y_luis', y_luis)
+np.save(save_path+'/ph_images', ph_images)
+np.save(save_path+'/amp_images', amp_images)
+np.save(save_path+'/y_sobel_squared_std', y_sobel_squared_std)
+np.save(save_path+'/y_min_amp_std', y_min_amp_std)
+np.save(save_path+'/y_combined', y_combined)
 #%%
 ########################## load results of test ##########################
 x = np.load(save_path+'/x.npy')
-images = np.load(save_path+'/images.npy')
-y_std = np.load(save_path+'/y_std.npy')
-y_squared_std = np.load(save_path+'/y_squared_std.npy')
-y_entropy = np.load(save_path+'/y_entropy.npy')
-y_sobel = np.load(save_path+'/y_sobel.npy')
-y_sobel_squared_avg = np.load(save_path+'/y_sobel_squared_avg.npy')
+ph_images = np.load(save_path+'/ph_images.npy')
+amp_images = np.load(save_path+'/amp_images.npy')
 y_sobel_squared_std = np.load(save_path+'/y_sobel_squared_std.npy')
-y_laplace_squared_std = np.load(save_path+'/y_laplace_squared_std.npy')
-y_fuzzy_entropy = np.load(save_path+'/y_fuzzy_entropy.npy')
-y_min_int_std = np.load(save_path+'/y_min_int_std.npy')
-y_luis = np.load(save_path+'/y_luis.npy')
+y_min_amp_std = np.load(save_path+'/y_min_amp_std.npy')
+y_combined = np.load(save_path+'/y_combined.npy')
 #%%
-plt.figure("all_functions_normalized")
-plt.plot(x, min_max_normalization(y_std), label="y_std")
-plt.plot(x, min_max_normalization(y_squared_std), label="y_squared_std")
-plt.plot(x, min_max_normalization(y_entropy), label="y_entropy")
-plt.plot(x, min_max_normalization(y_sobel), label="y_sobel")
-plt.plot(x, min_max_normalization(y_sobel_squared_avg), label="y_sobel_squared_avg")
-plt.plot(x, min_max_normalization(y_sobel_squared_std), label="y_sobel_squared_std")
-plt.plot(x, min_max_normalization(y_laplace_squared_std), label="y_laplace_squared_std")
-plt.plot(x, min_max_normalization(y_fuzzy_entropy), label="y_fuzzy_entropy")
-plt.plot(x, min_max_normalization(y_min_int_std), label="y_min_int_std")
-plt.plot(x, min_max_normalization(y_luis), label="y_luis")
-plt.xlabel("lengths [cm]")
-plt.title("std of different reconstruction lengths")
-plt.legend()
-plt.savefig(save_path+"/all_functions", dpi=300)
+fig, ax = plt.subplots(2, 2)
+for i in range(4):
+    ax.flatten()[i].plot(x, min_max_normalization(y_sobel_squared_std[i]), 'g', label="y_sobel_squared_std")
+    ax.flatten()[i].plot(np.ones(2) * x[np.argmin(y_sobel_squared_std[i])], np.arange(2), 'g--')
+    ax.flatten()[i].plot(x, min_max_normalization(y_min_amp_std[i]), 'b', label="y_min_amp_std")
+    ax.flatten()[i].plot(np.ones(2) * x[np.argmin(y_min_amp_std[i])], np.arange(2), 'b--')
+    ax.flatten()[i].plot(x, min_max_normalization(y_combined[i]), 'r', label="y_combined")
+    ax.flatten()[i].plot(np.ones(2) * x[np.argmin(y_combined[i])], np.arange(2), 'r--')
+    ax.flatten()[i].set_xlabel("lengths [cm]")
+ax[0, 0].legend()
 plt.show()
+# plt.savefig(save_path+"/all_functions", dpi=300)
 #%%
-plt.figure("std")
-plt.plot(x, y_std)
-plt.xlabel("lengths [cm]")
-plt.title("std of different reconstruction lengths")
-plt.savefig(save_path+"/std", dpi=300)
-plt.show()
-#%%
-plt.figure("squared std")
-plt.plot(x, y_squared_std)
-plt.xlabel("lengths [cm]")
-plt.title("squared std of different reconstruction lengths")
-plt.savefig(save_path+"/squared_std", dpi=300)
-plt.show()
-#%%
-plt.figure("entropy")
-plt.plot(x, y_entropy)
-plt.xlabel("lengths [cm]")
-plt.title("entropy of different reconstruction lengths")
-plt.savefig(save_path+"/entropy", dpi=300)
-plt.show()
-#%%
-plt.figure("sobel")
-plt.plot(x, y_sobel)
-plt.xlabel("lengths [cm]")
-plt.title("sobel of different reconstruction lengths")
-plt.savefig(save_path+"/y_sobel", dpi=300)
-plt.show()
-#%%
-plt.figure("y_sobel_squared_avg")
-plt.plot(x, y_sobel_squared_avg)
-plt.xlabel("lengths [cm]")
-plt.title("y_sobel_squared_avg of different reconstruction lengths")
-plt.savefig(save_path+"/y_sobel", dpi=300)
-plt.show()
-#%%
-plt.figure("y_sobel_squared_std")
-plt.plot(x, y_sobel_squared_std)
-plt.xlabel("lengths [cm]")
-plt.title("y_sobel_squared_std of different reconstruction lengths")
-plt.savefig(save_path+"/y_sobel_squared_std", dpi=300)
-plt.show()
-
-#%%
-plt.figure("y_laplace_squared_std")
-plt.plot(x, y_laplace_squared_std)
-plt.xlabel("lengths [cm]")
-plt.title("y_laplace_squared_std of different reconstruction lengths")
-plt.savefig(save_path+"/y_laplace_squared_std", dpi=300)
-plt.show()
-
-#%%
-plt.figure("fuzzy entropy")
-plt.plot(x, y_fuzzy_entropy)
-plt.xlabel("lengths [cm]")
-plt.title("fuzzy entropy of different reconstruction lengths")
-plt.savefig(save_path+"/y_fuzzy_entropy", dpi=300)
-plt.show()
-
-#%%
-plt.figure("y_min_int_std")
-plt.plot(x, y_min_int_std)
-plt.xlabel("lengths [cm]")
-plt.title("y_min_int_std of different reconstruction lengths")
-plt.savefig(save_path+"/y_min_int_std", dpi=300)
-plt.show()
-
-#%%
-plt.figure("y_luis")
-plt.plot(x, y_luis)
-plt.xlabel("lengths [cm]")
-plt.title("y_luis of different reconstruction lengths")
-plt.savefig(save_path+"/y_luis", dpi=300)
-plt.show()
+ph_images_small = np.zeros((len(holos), x.shape[0],400,400))
+amp_images_small = np.zeros((len(holos), x.shape[0],400,400))
+y_sobel_squared_std_small = np.zeros((len(holos), x.shape[0]))
+y_min_amp_std_small =np.zeros((len(holos), x.shape[0]))
+y_combined_small = np.zeros((len(holos), x.shape[0]))
+X, pseudoinverse = generate_X_and_pseudoinverse((400,400), 3)
+for i in range(len(holos)):
+    fname = save_path + os.sep + holos[i]
+    host.LoadHolo(fname,1)
+    for j in range(x.shape[0]):
+        xj = -3.5+j*0.01
+        x[j] = xj
+        host.SetRecDistCM(xj)
+        host.OnDistanceChange()
+        ph = host.GetPhase32fImage()[200:600,200:600]
+        ph = subtract_plane_X_precomputed(X, pseudoinverse, ph)
+        amp = host.GetIntensity32fImage()[200:600,200:600]
+        amp = subtract_plane_X_precomputed(X, pseudoinverse, amp)
+        ph_images_small[i,j] = ph
+        amp_images_small[i,j] = amp
+        y_sobel_squared_std_small[i, j] = evaluate_sobel_squared_std(ph)
+        y_min_amp_std_small[i, j] = evaluate_min_amp_std(amp)
+        y_combined_small[i, j] = evaluate_combined(amp,ph)
+        
+    print(fname, " done")
+np.save(save_path+'/x', x)
+np.save(save_path+'/ph_images_small', ph_images_small)
+np.save(save_path+'/amp_images_small', amp_images_small)
+np.save(save_path+'/y_sobel_squared_std_small', y_sobel_squared_std_small)
+np.save(save_path+'/y_min_amp_std_small', y_min_amp_std_small)
+np.save(save_path+'/y_combined_small', y_combined_small)
     
 #%%
+########################## load results of test ##########################
+x = np.load(save_path+'/x.npy')
+ph_images_small = np.load(save_path+'/ph_images_small.npy')
+amp_images_small = np.load(save_path+'/amp_images_small.npy')
+y_sobel_squared_std_small = np.load(save_path+'/y_sobel_squared_std_small.npy')
+y_min_amp_std_small = np.load(save_path+'/y_min_amp_std_small.npy')
+y_combined_small = np.load(save_path+'/y_combined_small.npy')
+
+#%%
+fig, ax = plt.subplots(2, 2)
+for i in range(4):
+    ax.flatten()[i].plot(x, min_max_normalization(y_sobel_squared_std_small[i]), 'g', label="y_sobel_squared_std")
+    ax.flatten()[i].plot(np.ones(2) * x[np.argmin(y_sobel_squared_std_small[i])], np.arange(2), 'g--')
+    ax.flatten()[i].plot(x, min_max_normalization(y_min_amp_std_small[i]), 'b', label="y_min_amp_std")
+    ax.flatten()[i].plot(np.ones(2) * x[np.argmin(y_min_amp_std_small[i])], np.arange(2), 'b--')
+    ax.flatten()[i].plot(x, min_max_normalization(y_combined_small[i]), 'r', label="y_combined")
+    ax.flatten()[i].plot(np.ones(2) * x[np.argmin(y_combined_small[i])], np.arange(2), 'r--')
+    ax.flatten()[i].set_xlabel("lengths [cm]")
+ax[0, 0].legend()
+plt.show()
+
+#%%
+
 from matplotlib.widgets import Slider, Button
 import matplotlib.pyplot as plt
 from matplotlib.patches import FancyArrowPatch
@@ -365,7 +230,7 @@ def interactive_image_player(frames, frame_dist=None, frame_func_eval=None):
         frame_idx = int(slider.val)
         im.set_data(frames[frame_idx])
         if frame_dist is not None:
-            title = f'Dist: {np.round(frame_dist[frame_idx],1)}'
+            title = f'Dist: {np.round(frame_dist[frame_idx],2)}'
         else:
             title = f'Frame {frame_idx}'
         if frame_func_eval is not None:
@@ -415,7 +280,7 @@ def interactive_image_player(frames, frame_dist=None, frame_func_eval=None):
 
     # Set the title of the first frame
     if frame_dist is not None:
-        title = f'Dist: {np.round(frame_dist[0],1)}'
+        title = f'Dist: {np.round(frame_dist[0],2)}'
     else:
         title = 'Frame 0'
     if frame_func_eval is not None:
@@ -425,17 +290,5 @@ def interactive_image_player(frames, frame_dist=None, frame_func_eval=None):
     # Show the plot
     plt.show()
 #%%
-interactive_image_player(images, x, y_luis)
-
-
-
-
-
-
-
-
-
-
-
-
-
+i = 1
+interactive_image_player(amp_images[i], x, y_min_amp_std[i])

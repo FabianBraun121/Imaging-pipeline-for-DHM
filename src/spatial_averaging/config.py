@@ -64,11 +64,11 @@ IMPORTANT: Do not change the default parameters below. Update the .json files in
 """
 
 _DEFAULTS = dict(
-    focus_method = "std_amp",
+    focus_method = "combined",
     optimizing_method = "Powell",
     tolerance = None,
     reconstrution_distance_low = -3.0,
-    reconstrution_distance_high = -1.0,
+    reconstrution_distance_high = -1.5,
     reconstruction_distance_guess = -2.3,
     plane_fit_order = 5,
     use_amp = True,
@@ -127,6 +127,10 @@ def load_config(koala_config_nr: int = None, json_file: str = None, display_alwa
         _open_koala()
     
     global KOALA_HOST
+    try:
+        KOALA_HOST.OpenPhaseWin()
+    except:
+        KOALA_HOST = None
     if KOALA_HOST is None:
         KOALA_HOST = client.pyKoalaRemoteClient()
         KOALA_HOST.Connect('localhost')

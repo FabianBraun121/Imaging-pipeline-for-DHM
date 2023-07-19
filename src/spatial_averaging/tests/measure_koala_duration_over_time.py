@@ -52,6 +52,11 @@ print(f'experiment took {np.round((time.time()-test_start)/60,1)} minutes!')
 np.save(save_path + os.sep + 'duration', duration)
 
 #%%
+duration = np.load(save_path + os.sep + 'duration.npy')
 
-plt.plot(duration)
-plt.title(f'duration to evaluate {num_evaluations_per_image} hologram positions in seconds')
+#%%
+plt.plot(np.arange(duration.shape[0])*100+1, duration*10)
+plt.xticks(np.arange(6)*20000, [f'{2*i}*$10^4$' for i in range(6)])
+plt.xlabel('$n^{th}$ image evaluation')
+plt.ylabel('duration [ms]')
+

@@ -74,6 +74,7 @@ class Hologram:
         self.koala_host.OnDistanceChange()
         if self.focus_method == 'std_amp':
             amp = self.koala_host.GetIntensity32fImage()
+            amp = self._subtract_plane_recon_rectangle(amp)
             return np.std(amp)
         elif self.focus_method == 'sobel_squared_std':
             ph = self.koala_host.GetPhase32fImage()
@@ -81,6 +82,7 @@ class Hologram:
             return -self._evaluate_sobel_squared_std(ph)
         elif self.focus_method == 'combined':
             amp = self.koala_host.GetIntensity32fImage()
+            amp = self._subtract_plane_recon_rectangle(amp)
             ph = self.koala_host.GetPhase32fImage()
             ph = self._subtract_plane_recon_rectangle(ph)
             return -np.std(ph)/np.std(amp)
@@ -253,22 +255,24 @@ def connect_to_remote_koala(ConfigNumber):
 
 #%%
 base_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\Graphes_Images'
-data_path = base_path + r'\data\median_background\2023-02-28 10-06-34\00001'
+#data_path = base_path + r'\data\median_background\2023-02-28 10-06-34\00001'
+data_path = base_path + r'\data\median_background\2023-04-06 11-07-24\00001'
 save_path = base_path + r'\Graphes_Images\median_background'
 #%%
 ########################## start Koala and define functions ##########################
 ConfigNumber = 221
 host = connect_to_remote_koala(ConfigNumber)
 #%%
-spa_median = SpatialPhaseAveraging(data_path, 0, host, median_background=True)
+timestep = 179
+spa_median = SpatialPhaseAveraging(data_path, timestep, host, median_background=True)
 background_median = spa_median.background
 avg_median = spa_median.get_cplx_avg()
 
-spa_mean_with_bacterias = SpatialPhaseAveraging(data_path, 0, host, median_background=False, subtract_bacteria=False)
+spa_mean_with_bacterias = SpatialPhaseAveraging(data_path, timestep, host, median_background=False, subtract_bacteria=False)
 background_mean_with_bacterias = spa_mean_with_bacterias.background
 avg_mean_with_bacterias = spa_mean_with_bacterias.get_cplx_avg()
 
-spa_mean_without_bacterias = SpatialPhaseAveraging(data_path, 0, host, median_background=False, subtract_bacteria=True)
+spa_mean_without_bacterias = SpatialPhaseAveraging(data_path, timestep, host, median_background=False, subtract_bacteria=True)
 background_mean_without_bacterias = spa_mean_without_bacterias.background
 avg_mean_without_bacterias = spa_mean_without_bacterias.get_cplx_avg()
 
@@ -300,4 +304,8 @@ plt.figure('avg_median')
 plt.imshow(np.angle(avg_median))
 plt.figure('avg_mean_without_bacterias')
 plt.imshow(np.angle(avg_mean_without_bacterias))
+
+#%%
+plt.figure('haha')
+plt.imshow(np.angle(background_median))
 

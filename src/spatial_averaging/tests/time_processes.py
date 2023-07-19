@@ -119,6 +119,7 @@ for i in range(100):
     host.SetRecDistCM(random.random())
     host.OnDistanceChange()
     image_values = host.GetIntensity32fImage()
+    image_values2 = host.GetPhase32fImage()
 end = time.time()
 print('Saving and reading an image in Koala takes',np.round((end-start),10)*10, 'ms per image')
 #%%
@@ -172,10 +173,10 @@ print('Subtracting plane with self written function takes', np.round((end-start)
 #%%
 X, pseudoinverse = generate_X_and_pseudoinverse(image_values, degree)
 start = time.time()
-for i in range(10):
+for i in range(100):
     image_hand_precomputed = subtract_plane_by_hand_X_precomputed(X, pseudoinverse, image_values, degree)
 end = time.time()
-print('Subtracting plane with self written function and precomputed pseudoinverse takes', np.round((end-start)*100,1), 'ms per image')
+print('Subtracting plane with self written function and precomputed pseudoinverse takes', np.round((end-start)*10,1), 'ms per image')
 #%%
 start = time.time()
 for i in range(10):
@@ -189,3 +190,20 @@ for i in range(10):
     __ = squared_std(image_hand_precomputed)
 end = time.time()
 print('Image squared std algorithm takes', np.round((end-start)*100,1), 'ms per image')
+
+#%%
+start = time.time()
+for i in range(100):
+    __ = np.std(image_values)
+end = time.time()
+print('std takes', np.round((end-start)*10,1), 'ms per image')
+
+#%%
+start = time.time()
+for i in range(100):
+    __ = np.std(image_values)/np.std(image_values2)
+end = time.time()
+print('std takes', np.round((end-start)*10,1), 'ms per image')
+
+
+

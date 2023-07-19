@@ -195,6 +195,7 @@ class Hologram:
         bounds = Bounds(lb=cfg.reconstrution_distance_low, ub=cfg.reconstrution_distance_high)
         res = minimize(self._evaluate_reconstruction_distance, [self.position.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
         self.focus = res.x[0]
+        print(self.focus)
         self.position.set_x0_guess(self.focus)
         self.focus_score = res.fun
         self.cplx_image = self._cplx_image()
@@ -218,6 +219,7 @@ class Hologram:
         cfg.KOALA_HOST.OnDistanceChange()
         if cfg.focus_method == 'std_amp':
             amp = cfg.KOALA_HOST.GetIntensity32fImage()
+            amp = self._subtract_plane_recon_rectangle(amp)
             return np.std(amp)
         elif cfg.focus_method == 'sobel_squared_std':
             ph = cfg.KOALA_HOST.GetPhase32fImage()
@@ -225,6 +227,7 @@ class Hologram:
             return -self._evaluate_sobel_squared_std(ph)
         elif cfg.focus_method == 'combined':
             amp = cfg.KOALA_HOST.GetIntensity32fImage()
+            amp = self._subtract_plane_recon_rectangle(amp)
             ph = cfg.KOALA_HOST.GetPhase32fImage()
             ph = self._subtract_plane_recon_rectangle(ph)
             return -np.std(ph)/np.std(amp)
@@ -276,7 +279,7 @@ class SpatialPhaseAveraging:
     def _background(self) -> CplxImage:
             background = np.zeros((len(self.holograms), cfg.image_size[0], cfg.image_size[1]), dtype=np.complex64)
             for i in range(len(self.holograms)):
-                background[i] = self.holo_list_in_use[i].get_cplx_image()
+                background[i] = self.holograms[i].get_cplx_image()
             return (np.median(np.abs(background), axis=0)*np.exp(1j*np.median(np.angle(background), axis=0))).astype(np.complex64)
     
     def _spatial_avg(self) -> CplxImage:
@@ -287,7 +290,6 @@ class SpatialPhaseAveraging:
             cplx_image /= self.background
             cplx_image, shift_vector = self._shift_image(spatial_avg, cplx_image)
             self.positions[i].set_shift_vector(shift_vector)
-            print(shift_vector)
             cplx_image = self._subtract_phase_offset(cplx_image, spatial_avg, self.positions[i].get_pos_image_roi())
             spatial_avg += cplx_image
         return spatial_avg/self.num_pos
@@ -344,8 +346,8 @@ class Pipeline:
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
         self.image_count: int = 0
-        self.duration = []
-        self.focus_distances = []
+        self.images = []
+        self.foci = []
         
     def _get_mask_from_rectangle(self, image: Image) -> Mask:
         # Show the image and wait for user to select a rectangle
@@ -401,17 +403,16 @@ class Pipeline:
                 if self.image_settings_updated:
                     cfg.set_image_variables((cfg.KOALA_HOST.GetPhaseWidth(),cfg.KOALA_HOST.GetPhaseHeight()), cfg.KOALA_HOST.GetPxSizeUm()*1e-6)
                     self.image_settings_updated = True
-                    
-                self.focus_distances.append([h.focus for h in spa.holograms])
                 
                 save_loc_folder = str(self.saving_dir) + os.sep + l.loc_name
                 if not os.path.exists(save_loc_folder):
                     os.makedirs(save_loc_folder)
                 fname = save_loc_folder +"\\ph_timestep_"+str(t).zfill(5)+".bin"
-                binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
+                # binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
                 duration_timestep = np.round(time.time()-start_image,1)
                 print(fname, "done in", duration_timestep, "seconds")
-                self.duration.append([l.loc_name, t, duration_timestep])
+                self.images.append([holo.get_cplx_image() for holo in spa.holograms])
+                self.foci.append([holo.focus for holo in spa.holograms])
                 
                 self.image_count += 1
                 if self.image_count % cfg.koala_reset_frequency == 0:
