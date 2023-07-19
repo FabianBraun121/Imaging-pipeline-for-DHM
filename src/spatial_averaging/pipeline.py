@@ -195,7 +195,6 @@ class Hologram:
         bounds = Bounds(lb=cfg.reconstrution_distance_low, ub=cfg.reconstrution_distance_high)
         res = minimize(self._evaluate_reconstruction_distance, [self.position.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
         self.focus = res.x[0]
-        print(self.focus)
         self.position.set_x0_guess(self.focus)
         self.focus_score = res.fun
         self.cplx_image = self._cplx_image()
@@ -346,8 +345,6 @@ class Pipeline:
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
         self.image_count: int = 0
-        self.images = []
-        self.foci = []
         
     def _get_mask_from_rectangle(self, image: Image) -> Mask:
         # Show the image and wait for user to select a rectangle
@@ -408,11 +405,9 @@ class Pipeline:
                 if not os.path.exists(save_loc_folder):
                     os.makedirs(save_loc_folder)
                 fname = save_loc_folder +"\\ph_timestep_"+str(t).zfill(5)+".bin"
-                # binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
+                binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
                 duration_timestep = np.round(time.time()-start_image,1)
                 print(fname, "done in", duration_timestep, "seconds")
-                self.images.append([holo.get_cplx_image() for holo in spa.holograms])
-                self.foci.append([holo.focus for holo in spa.holograms])
                 
                 self.image_count += 1
                 if self.image_count % cfg.koala_reset_frequency == 0:
