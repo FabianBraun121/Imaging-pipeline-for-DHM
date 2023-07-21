@@ -10,6 +10,7 @@ import gc
 import time
 import numpy.typing as npt
 import cv2
+import tifffile
 from typing import cast, List, Union, Dict, Optional, Any, Tuple
 from pathlib import Path
 from skimage.registration import phase_cross_correlation
@@ -39,7 +40,23 @@ class Location:
         self.loc_image_roi: Mask = np.ones(cfg.image_size, dtype=np.uint8)
         self.recon_rectangle_selected: bool = False
         self.loc_recon_corners: List[List[int]] = None  #((ymin, ymax), (xmin, xmax))
+        self.backgrounds = []
+        self.background = self._background()
         
+    def average_backgrounds(self):
+        self.background = np.mean(np.abs(self.backgrounds), axis=0) * np.exp(1j* np.mean(np.angle(self.backgrounds), axis=0)).astype(np.complex64)
+        tifffile.imwrite(str(self.loc_dir)+os.sep+'background.tif', self.background)
+    
+    def _background(self):
+        # checks whether there is a background already calculated for this Location
+        if os.path.isfile(str(self.loc_dir)+os.sep+'background.tif'):
+            return np.array(tifffile.imread(str(self.loc_dir)+os.sep+'background.tif'))
+        else:
+            return None
+            
+    def get_background(self):
+        return self.background.copy()
+    
     def get_loc_image_roi(self) -> Mask:
         return self.loc_image_roi.copy()
     
@@ -184,6 +201,7 @@ class Hologram:
                  ):
 
         self.fname: Path = Path(fname)
+        self.corrupted = self._check_corrupted()
         self.position: Position = position
         self.focus: float = focus # Focus distance
         self.focus_score: float = None # score of evaluatino function at the Focus point (minimum)
@@ -198,6 +216,16 @@ class Hologram:
         self.position.set_x0_guess(self.focus)
         self.focus_score = res.fun
         self.cplx_image = self._cplx_image()
+        
+    def _check_corrupted(self):
+        # There are images that are only black, those images have a small size
+        threshold = 1e5
+        size = os.path.getsize(self.fname)
+        if size < threshold:
+            print(f'image {self.fname} is corrupted!')
+            return True
+        else:
+            return False
             
     def _cplx_image(self) -> CplxImage:
         cfg.KOALA_HOST.LoadHolo(str(self.fname),1)
@@ -269,17 +297,27 @@ class SpatialPhaseAveraging:
         self.location: Location = location
         self.timestep: int = timestep
         self.positions: List[Position] = positions
-        self.num_pos: int = len(self.positions)
         self.holograms: List[Hologram] = self._generate_holograms()
+        self.num_pos: int = len(self.holograms)
         self.background: CplxImage = self._background()
         self.spatial_avg: CplxImage = self._spatial_avg()
     
     
     def _background(self) -> CplxImage:
-            background = np.zeros((len(self.holograms), cfg.image_size[0], cfg.image_size[1]), dtype=np.complex64)
+        if self.location.background is not None:
+            return self.location.get_background()
+        else:
+            images = np.zeros((len(self.holograms), cfg.image_size[0], cfg.image_size[1]), dtype=np.complex64)
             for i in range(len(self.holograms)):
-                background[i] = self.holograms[i].get_cplx_image()
-            return (np.median(np.abs(background), axis=0)*np.exp(1j*np.median(np.angle(background), axis=0))).astype(np.complex64)
+                images[i] = self.holograms[i].get_cplx_image()
+            background = (np.median(np.abs(images), axis=0)*np.exp(1j*np.median(np.angle(images), axis=0))).astype(np.complex64)
+            
+            # Averaging the first 10 backgrounds
+            self.location.backgrounds.append(background)
+            if len(self.location.backgrounds) == 10:
+                self.location.average_backgrounds()
+            
+            return background
     
     def _spatial_avg(self) -> CplxImage:
         spatial_avg = self.holograms[0].get_cplx_image()
@@ -298,6 +336,8 @@ class SpatialPhaseAveraging:
         for p in self.positions:
             fname = Path(str(p.pos_dir) + os.sep + "Holograms" + os.sep + str(self.timestep).zfill(5) + "_holo.tif")
             hologram = Hologram(fname, p)
+            if hologram.corrupted:
+                continue
             hologram.calculate_focus()
             # first guess is the focus point of the last image
             p.set_x0_guess(hologram.focus)
@@ -345,6 +385,7 @@ class Pipeline:
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
         self.image_count: int = 0
+        self.spa = None
         
     def _get_mask_from_rectangle(self, image: Image) -> Mask:
         # Show the image and wait for user to select a rectangle
@@ -408,6 +449,7 @@ class Pipeline:
                 binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
                 duration_timestep = np.round(time.time()-start_image,1)
                 print(fname, "done in", duration_timestep, "seconds")
+                self.spa = spa
                 
                 self.image_count += 1
                 if self.image_count % cfg.koala_reset_frequency == 0:
@@ -415,7 +457,7 @@ class Pipeline:
                         shut_down_restart_koala()
                     else:
                         logout_login_koala()
-                del spa
+                # del spa
                 
             del positions
             gc.collect()
@@ -458,19 +500,5 @@ class Pipeline:
             return all_timesteps
         else:
             return all_timesteps[self.restrict_timesteps]
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
         
         

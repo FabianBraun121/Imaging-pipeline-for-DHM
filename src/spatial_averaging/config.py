@@ -59,12 +59,9 @@ unit_code : int = 0
 
 koala_reset_frequency: int = 0
 
-"""
-IMPORTANT: Do not change the default parameters below. Update the .json files instead if necessary.
-"""
 
 _DEFAULTS = dict(
-    focus_method = "combined",
+    focus_method = "std_amp",
     optimizing_method = "Powell",
     tolerance = None,
     reconstrution_distance_low = -3.0,
