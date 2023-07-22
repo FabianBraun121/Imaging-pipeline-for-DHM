@@ -349,11 +349,14 @@ avg_image = spa.get_phase_avg()
 np.save(save_path + os.sep + 'images', images)
 np.save(save_path + os.sep + 'avg_image', avg_image)
 #%%
+points = draw_on_image(images[0])
+#%%
+np.save(save_path + os.sep + 'points', np.array(points))
+#%%
 images = np.load(save_path + os.sep + 'images.npy')
 avg_image = np.load(save_path + os.sep + 'avg_image.npy')
-#%%
-
-points = draw_on_image(images[0])
+points = np.load(save_path + os.sep + 'points.npy')
+points = [tuple(points[i]) for i in range(points.shape[0])]
 
 #%%
 
@@ -361,6 +364,8 @@ for image in images:
     line = np.array([image[p[::-1]] for p in points])
     plt.plot(line, 'b')
 plt.plot(np.array([avg_image[p[::-1]] for p in points]), 'r', label='averaged images')
+plt.xlabel('pixel')
+plt.ylabel('phase [rad]')
 
 
 
