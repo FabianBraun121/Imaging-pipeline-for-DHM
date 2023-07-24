@@ -380,7 +380,7 @@ class Pipeline:
         self.base_dir: Path = Path(base_dir)
         self.saving_dir: Path = self._saving_dir(saving_dir)
         self.restrict_locations: slice = restrict_locations
-        self.restrict_timesteps: slice = restrict_timesteps
+        self.restrict_timesteps: range = restrict_timesteps
         self.locations: List[Location] = self._locations()
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
@@ -495,10 +495,15 @@ class Pipeline:
         return ndimage.shift(moving_image, shift=shift_vector, mode='wrap')
         
     def _timesteps(self) -> range:
+        
         all_timesteps = range(len(os.listdir(str(self.base_dir)+os.sep+self.locations[0].loc_name + os.sep + "00001_00001\Holograms")))
         if self.restrict_timesteps == None:
+            holo_path = str(self.base_dir)+os.sep+self.locations[0].loc_name + os.sep + "00001_00001\Holograms"
+            first_holo = int(sorted(os.listdir(holo_path))[0][:5])
+            num_timesteps = len(os.listdir(holo_path))
+            all_timesteps = range(first_holo, first_holo + num_timesteps)
             return all_timesteps
         else:
-            return all_timesteps[self.restrict_timesteps]
+            return self.restrict_timesteps
         
         
