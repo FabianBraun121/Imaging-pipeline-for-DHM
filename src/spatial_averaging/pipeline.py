@@ -11,6 +11,8 @@ import time
 import numpy.typing as npt
 import cv2
 import tifffile
+import json
+from datetime import datetime
 from typing import cast, List, Union, Dict, Optional, Any, Tuple
 from pathlib import Path
 from skimage.registration import phase_cross_correlation
@@ -210,7 +212,7 @@ class Hologram:
     def calculate_focus(self):
         cfg.KOALA_HOST.LoadHolo(str(self.fname),1)
         cfg.KOALA_HOST.SetUnwrap2DState(True)
-        bounds = Bounds(lb=cfg.reconstrution_distance_low, ub=cfg.reconstrution_distance_high)
+        bounds = Bounds(lb=cfg.reconstruction_distance_low, ub=cfg.reconstruction_distance_high)
         res = minimize(self._evaluate_reconstruction_distance, [self.position.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
         self.focus = res.x[0]
         self.position.set_x0_guess(self.focus)
@@ -379,13 +381,13 @@ class Pipeline:
         
         self.base_dir: Path = Path(base_dir)
         self.saving_dir: Path = self._saving_dir(saving_dir)
+        self.data_file_path: Path = None
         self.restrict_locations: slice = restrict_locations
         self.restrict_timesteps: range = restrict_timesteps
         self.locations: List[Location] = self._locations()
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
         self.image_count: int = 0
-        self.spa = None
         
     def _get_mask_from_rectangle(self, image: Image) -> Mask:
         # Show the image and wait for user to select a rectangle
@@ -417,14 +419,14 @@ class Pipeline:
         return [[ymin, ymax], [xmin, xmax]]
 
     def _locations(self) -> List[Location]:
-        all_locations = [ Location(Path(f.path)) for f in os.scandir(self.base_dir) if f.is_dir()]
+        all_locations =[Location(Path(f.path)) for f in os.scandir(self.base_dir) if f.is_dir()]
         if self.restrict_locations == None:
             return all_locations
         else:
             return all_locations[self.restrict_locations]
     
     def process(self):
-        if cfg._LOADED is None:
+        if cfg._LOADED is False:
             raise RuntimeError(
                 "configuration has not been loaded, do so by executing sa.config.load_config"
             )
@@ -438,8 +440,9 @@ class Pipeline:
                 if last_phase_image is not None:
                     averaged_phase_image = self._temporal_shift_correction(last_phase_image, averaged_phase_image)
                 
-                if self.image_settings_updated:
-                    cfg.set_image_variables((cfg.KOALA_HOST.GetPhaseWidth(),cfg.KOALA_HOST.GetPhaseHeight()), cfg.KOALA_HOST.GetPxSizeUm()*1e-6)
+                if not self.image_settings_updated:
+                    cfg.set_image_variables((cfg.KOALA_HOST.GetPhaseWidth(),cfg.KOALA_HOST.GetPhaseHeight()), cfg.KOALA_HOST.GetPxSizeUm()*1e-6, cfg.KOALA_HOST.GetLambdaNm(0)*1e-9)
+                    self.data_file_path = self._write_data_file()
                     self.image_settings_updated = True
                 
                 save_loc_folder = str(self.saving_dir) + os.sep + l.loc_name
@@ -447,9 +450,10 @@ class Pipeline:
                     os.makedirs(save_loc_folder)
                 fname = save_loc_folder +"\\ph_timestep_"+str(t).zfill(5)+".bin"
                 binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
+                last_phase_image = averaged_phase_image
                 duration_timestep = np.round(time.time()-start_image,1)
                 print(fname, "done in", duration_timestep, "seconds")
-                self.spa = spa
+                self._update_data_file(spa, duration_timestep)
                 
                 self.image_count += 1
                 if self.image_count % cfg.koala_reset_frequency == 0:
@@ -457,7 +461,7 @@ class Pipeline:
                         shut_down_restart_koala()
                     else:
                         logout_login_koala()
-                # del spa
+                del spa
                 
             del positions
             gc.collect()
@@ -495,8 +499,6 @@ class Pipeline:
         return ndimage.shift(moving_image, shift=shift_vector, mode='wrap')
         
     def _timesteps(self) -> range:
-        
-        all_timesteps = range(len(os.listdir(str(self.base_dir)+os.sep+self.locations[0].loc_name + os.sep + "00001_00001\Holograms")))
         if self.restrict_timesteps == None:
             holo_path = str(self.base_dir)+os.sep+self.locations[0].loc_name + os.sep + "00001_00001\Holograms"
             first_holo = int(sorted(os.listdir(holo_path))[0][:5])
@@ -505,5 +507,50 @@ class Pipeline:
             return all_timesteps
         else:
             return self.restrict_timesteps
+    
+    def _update_data_file(self, spa, time):
+        with open(self.data_file_path, 'r') as file:
+            data = json.load(file)
         
+        location = spa.location.loc_name
+        timestep = spa.timestep
+        image_name = f'location_{location}_timestep_{str(timestep).zfill(5)}'
+        data["images"][image_name] = {
+            "location" : int(location),
+            "timestep" : timestep,
+            "time": time,
+            "foci": tuple(holo.focus for holo in spa.holograms),
+        }
+        
+        with open(self.data_file_path, 'w') as file:
+            json.dump(data, file, indent=4)
+            
+
+    def _write_data_file(self) -> Path:
+        current_datetime = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+        data_file_path = Path(self.saving_dir, f'data file {current_datetime}.json')
+        
+        data = {
+            "settings": {
+                "focus_method": cfg.focus_method,
+                "optimizing_method": cfg.optimizing_method,
+                "tolerance": cfg.tolerance,
+                "reconstruction_distance_low": cfg.reconstruction_distance_low,
+                "reconstruction_distance_high": cfg.reconstruction_distance_high,
+                "reconstruction_distance_guess": cfg.reconstruction_distance_guess,
+                "plane_fit_order": cfg.plane_fit_order,
+                "use_amp": cfg.use_amp,
+                "image_size": cfg.image_size,
+                "px_size": cfg.px_size,
+                "hconv": cfg.hconv,
+                "unit_code": cfg.unit_code,
+                "koala_reset_frequency": cfg.koala_reset_frequency
+            },
+            "images": {}
+        }
+        
+        with open(data_file_path, 'w') as file:
+            json.dump(data, file, indent=4)  # Add indent parameter to make it readable
+        
+        return data_file_path
         

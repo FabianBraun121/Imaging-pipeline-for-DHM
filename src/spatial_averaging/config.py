@@ -24,7 +24,7 @@ from . import __file__ as _spatavg_init  # Path to __init__ file
 
 _SPATAVG_DIR = _os.path.dirname(_spatavg_init)
 "spatial averaging lib install directory"
-_LOADED = None
+_LOADED = False
 "Which config file was loaded"
 KOALA_HOST = None
 "koala host"
@@ -33,94 +33,32 @@ KOALA_CONFIG_NR = None
 DISPLAY_ALWAYS_ON: bool = False
 
 
-# Parameters:
-focus_method: str = ""
-# evaluation function
-optimizing_method: str = ""
-# function descent method
+focus_method: str = "combined"
+optimizing_method: str = "Powell"
 tolerance: Optional[float] = None
 
-reconstruction_distance_low: float = 0.0
+reconstruction_distance_low: float = -3.0
+reconstruction_distance_high: float = -1.5
+reconstruction_distance_guess: float = -2.3
 
-reconstruction_distance_high: float = 0.0
-
-reconstruction_distance_guess: float = 0.0
-
-plane_fit_order: int = 0
-
+plane_fit_order: int = 4
 use_amp: bool = False
 
-image_size: Tuple[int, int] = (0, 0)
+image_size: Tuple[int, int] = (800, 800)
+px_size: float = 0.12976230680942535*1e-6
+hconv: float = 794*1e-9/(2*_np.pi)
+unit_code : int = 1
 
-px_size: float = 0.0
-
-hconv: float = 0.0
-
-unit_code : int = 0
-
-koala_reset_frequency: int = 0
+koala_reset_frequency: int = 10
 
 
-_DEFAULTS = dict(
-    focus_method = "std_amp",
-    optimizing_method = "Powell",
-    tolerance = None,
-    reconstrution_distance_low = -3.0,
-    reconstrution_distance_high = -1.5,
-    reconstruction_distance_guess = -2.3,
-    plane_fit_order = 4,
-    use_amp = True,
-    image_size = (800, 800),
-    px_size = 0.12976230680942535*1e-6,
-    hconv = 794*1e-9/(2*_np.pi),
-    unit_code = 1,
-    koala_reset_frequency = 10
-)
-
-def load_config(koala_config_nr: int = None, json_file: str = None, display_always_on: bool = False):
-    """
-    Loads json configuration files
-
-    Parameters
-    ----------
-    json_file : str or None, optional
-        Path to json file containing configuration. If none default values are
-        selected.
-        The default is None.
-
-    Returns
-    -------
-    None.
-
-    """
+def load_config(koala_config_nr: int = None, display_always_on: bool = False,
+                focus_methodIn: str = None, optimizing_methodIn: str = None,
+                reconstruction_distance_lowIn: float = None, reconstruction_distance_highIn: float = None,
+                reconstruction_distance_guessIn: float = None, plane_fit_orderIn: int = None,
+                koala_reset_frequencyIn: int = None):
     
-    
-    defaults = _DEFAULTS
-    if json_file is not None:
-        if _os.path.exists(json_file):
-            variables = _read_json(json_file)
-        else:
-            raise ValueError(
-                    """json file does not exist.
-                    """
-                )
-    else:
-        variables = defaults
-        json_file = "default parameters"
-    global _LOADED
-    _LOADED = json_file
-
-    # Check if it has the same parameters set as defaults:
-    if set(variables.keys()) != set(defaults.keys()):
-        _warn(
-            "The config file keys differ from the defaults. This is most "
-            "likely because the config file was generated for an earlier version."
-            " This may cause issues."
-        )
-
-    # Update config variables:
-    globals().update(variables)
-    
+    # Open Koala and load Configurations
     if not _is_koala_running():
         _open_koala()
     
@@ -147,30 +85,50 @@ def load_config(koala_config_nr: int = None, json_file: str = None, display_alwa
     KOALA_HOST.OpenIntensityWin()
     KOALA_HOST.OpenHoloWin()
     
+    
+    # Update the configuration settings if arguments are provided
     global DISPLAY_ALWAYS_ON
     DISPLAY_ALWAYS_ON = display_always_on
+    
+    if focus_methodIn is not None:
+        global focus_method
+        focus_method = focus_methodIn
+    
+    if optimizing_methodIn is not None:
+        global optimizing_method
+        optimizing_method = optimizing_methodIn
+    
+    if reconstruction_distance_lowIn is not None:
+        global reconstruction_distance_low
+        reconstruction_distance_low = reconstruction_distance_lowIn
+    
+    if reconstruction_distance_highIn is not None:
+        global reconstruction_distance_high
+        reconstruction_distance_high = reconstruction_distance_highIn
+    
+    if reconstruction_distance_guessIn is not None:
+        global reconstruction_distance_guess
+        reconstruction_distance_guess = reconstruction_distance_guessIn
+    
+    if plane_fit_orderIn is not None:
+        global plane_fit_order
+        plane_fit_order = plane_fit_orderIn
+    
+    if koala_reset_frequencyIn is not None:
+        global koala_reset_frequency
+        koala_reset_frequency = koala_reset_frequencyIn
+    
+    global _LOADED
+    _LOADED = True
 
-
-def _read_json(json_file: str):
-
-    # Load file:
-    print(f"Loading configuration from: {json_file}")
-    with open(json_file, "r") as f:
-        variables = _json.loads(f.read())
-
-    # Type cast:
-    for k, v in variables.items():
-        if isinstance(v, list):
-            variables[k] = tuple(v)  # Always use tuples, not lists in config
-
-    return variables
-
-def set_image_variables(image_size_in: Tuple, px_size_in: float):
+def set_image_variables(image_size_in: Tuple, px_size_in: float, laser_lambd: float):
     # hconv is hard coded and can not be changed, since Koala uses the wrong hconv
     global image_size
     image_size = image_size
     global px_size
     px_size = px_size_in
+    global hconv
+    hconv = laser_lambd/(2*_np.pi)
 
 
 
