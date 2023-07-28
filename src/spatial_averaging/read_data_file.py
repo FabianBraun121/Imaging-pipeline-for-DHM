@@ -8,7 +8,7 @@ import json
 import numpy as np
 import matplotlib.pyplot as plt
 
-data_file_path = r'F:\F3_20230302\2023-03-02 11-30-06 phase averages\data file 2023-07-27 17-08-53.json'
+data_file_path = r'F:\F9_20230228\2023-02-28 12-21-37 phase averages\data file 2023-07-28 16-34-05.json'
 with open(data_file_path, 'r') as file:
     data = json.load(file)
     
@@ -18,7 +18,7 @@ foci = np.array([data['images'][d]['foci'] for d in list(data['images'])])
 time = np.array([data['images'][d]['time'] for d in list(data['images'])])
 function_eval = np.array([data['images'][d]['function_evaluations'] for d in list(data['images'])])
 
-data_file_path1 = r'F:\F3_20230302\2023-03-02 11-30-06 phase averages\data file 2023-07-27 18-59-01.json'
+data_file_path1 = r'F:\F9_20230228\2023-02-28 12-21-37 phase averages\data file 2023-07-28 17-34-57.json'
 with open(data_file_path1, 'r') as file:
     data1 = json.load(file)
 

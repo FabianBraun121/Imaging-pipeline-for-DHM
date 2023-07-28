@@ -31,81 +31,81 @@ CplxImage = npt.NDArray[np.complex64]
 Mask = npt.NDArray[np.uint8]
 
 
-class Location:
+class Position:
     def __init__(
             self,
-            loc_dir: Union[str, Path],
+            pos_dir: Union[str, Path],
             ):
         
-        self.loc_dir: Path = Path(loc_dir)
-        self.loc_name: str = loc_dir.name
+        self.pos_dir: Path = Path(pos_dir)
+        self.pos_name: str = pos_dir.name
         self.image_roi_selected: bool = False
-        self.loc_image_roi: Mask = np.ones(cfg.image_size, dtype=np.uint8)
+        self.pos_image_roi: Mask = np.ones(cfg.image_size, dtype=np.uint8)
         self.recon_rectangle_selected: bool = False
-        self.loc_recon_corners: List[List[int]] = None  #((ymin, ymax), (xmin, xmax))
+        self.pos_recon_corners: List[List[int]] = None  #((ymin, ymax), (xmin, xmax))
         self.backgrounds = []
         self.background = self._background()
         
     def average_backgrounds(self):
         self.background = np.mean(np.abs(self.backgrounds), axis=0) * np.exp(1j* np.mean(np.angle(self.backgrounds), axis=0)).astype(np.complex64)
-        tifffile.imwrite(str(self.loc_dir)+os.sep+'background.tif', self.background)
+        tifffile.imwrite(str(self.pos_dir)+os.sep+'background.tif', self.background)
     
     def _background(self):
-        # checks whether there is a background already calculated for this Location
-        if os.path.isfile(str(self.loc_dir)+os.sep+'background.tif'):
-            return np.array(tifffile.imread(str(self.loc_dir)+os.sep+'background.tif'))
+        # checks whether there is a background already calculated for this Position
+        if os.path.isfile(str(self.pos_dir)+os.sep+'background.tif'):
+            return np.array(tifffile.imread(str(self.pos_dir)+os.sep+'background.tif'))
         else:
             return None
             
     def get_background(self):
         return self.background.copy()
     
-    def get_loc_image_roi(self) -> Mask:
-        return self.loc_image_roi.copy()
+    def get_pos_image_roi(self) -> Mask:
+        return self.pos_image_roi.copy()
     
-    def get_loc_image_roi_corners(self) -> List[List[int]]:
+    def get_pos_image_roi_corners(self) -> List[List[int]]:
         if self.image_roi_selected:
-            non_zero_indices = np.nonzero(self.loc_image_roi)
+            non_zero_indices = np.nonzero(self.pos_image_roi)
             [ymin, ymax] = [np.min(non_zero_indices[0]), np.max(non_zero_indices[0])]
             [xmin, xmax] = [np.min(non_zero_indices[1]), np.max(non_zero_indices[1])]
             return [[ymin, ymax], [xmin, xmax]]
         else:
             return [[0,cfg.image_size[0]],[0,cfg.image_size[1]]]
     
-    def set_loc_image_roi(self, loc_image_roi: Mask):
-        self.loc_image_roi = loc_image_roi.astype(np.uint8)
+    def set_pos_image_roi(self, pos_image_roi: Mask):
+        self.pos_image_roi = pos_image_roi.astype(np.uint8)
         self.image_roi_selected = True
     
-    def get_loc_recon_corners(self) -> List[List[int]] :
-        if self.loc_recon_corners is None:
-            return self.get_loc_image_roi_corners()
+    def get_pos_recon_corners(self) -> List[List[int]] :
+        if self.pos_recon_corners is None:
+            return self.get_pos_image_roi_corners()
         else:
-            return self.loc_recon_corners
+            return self.pos_recon_corners
     
-    def set_loc_recon_corners(self, loc_recon_corners: List[List[int]]):
-        self.loc_recon_corners = loc_recon_corners
+    def set_pos_recon_corners(self, pos_recon_corners: List[List[int]]):
+        self.pos_recon_corners = pos_recon_corners
         self.recon_rectangle_selected = True
 
 
-class Position:
+class Placement:
     def __init__(
             self,
-            pos_dir: Union[str, Path],
-            location: Location,
+            place_dir: Union[str, Path],
+            position: Position,
             ):
     
-        self.pos_dir: Path = Path(pos_dir)
-        self.location = location
-        self.pos_name: str = pos_dir.name
-        self.pos_image_roi: Mask = None
-        self.pos_recon_corners: List[List[int]] = self.location.get_loc_image_roi_corners()
+        self.place_dir: Path = Path(place_dir)
+        self.position = position
+        self.place_name: str = place_dir.name
+        self.place_image_roi: Mask = None
+        self.place_recon_corners: List[List[int]] = self.position.get_pos_image_roi_corners()
         self.shift_vector: List[int] = [0,0]
         self.x0_guess: float = cfg.reconstruction_distance_guess
         self.X_plane: npt.NDArray[np.float64] = None
         self.X_plane_pseudoinverse: npt.NDArray[np.float64] = None
         self.X_plane_image_roi: npt.NDArray[np.float64] = None
         self.X_plane_image_roi_pseudoinverse: npt.NDArray[np.float64] = None
-        self.set_pos_image_roi()
+        self.set_place_image_roi()
         self._calculate_X_planes()
         self._calculate_X_planes_pseudoinverse()
         # Before the shift_vector is estimated the full image is used for calculating the focus point
@@ -122,16 +122,16 @@ class Position:
             X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
             self.X_plane = PolynomialFeatures(degree=cfg.plane_fit_order, include_bias=True).fit_transform(X)
         
-        if self.location.image_roi_selected:
-            X1_image_roi, X2_image_roi = X1[self.pos_image_roi==True], X2[self.pos_image_roi==True]
+        if self.position.image_roi_selected:
+            X1_image_roi, X2_image_roi = X1[self.place_image_roi==True], X2[self.place_image_roi==True]
             X_image_roi = np.hstack((X1_image_roi.reshape(-1,1) , X2_image_roi.reshape(-1,1)))
             self.X_plane_image_roi = PolynomialFeatures(degree=cfg.plane_fit_order, include_bias=True).fit_transform(X_image_roi)
         else: 
             self.X_plane_image_roi = self.X_plane
     
     def _calculate_X_plane_recon_rectangle(self):
-        heigth = (self.pos_recon_corners[0][1]-self.pos_recon_corners[0][0]) % (cfg.image_size[0]+1)
-        width = (self.pos_recon_corners[1][1]-self.pos_recon_corners[1][0]) % (cfg.image_size[0]+1)
+        heigth = (self.place_recon_corners[0][1]-self.place_recon_corners[0][0]) % (cfg.image_size[0]+1)
+        width = (self.place_recon_corners[1][1]-self.place_recon_corners[1][0]) % (cfg.image_size[0]+1)
         X1, X2 = np.mgrid[:heigth, :width]
         X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
         self.X_plane_recon_rectangle = PolynomialFeatures(degree=cfg.plane_fit_order, include_bias=True).fit_transform(X)
@@ -139,17 +139,17 @@ class Position:
     def _calculate_X_planes_pseudoinverse(self):
         if self.X_plane_pseudoinverse is None:
             self.X_plane_pseudoinverse = np.dot(np.linalg.inv(np.dot(self.X_plane.transpose(), self.X_plane)), self.X_plane.transpose())
-        if self.location.image_roi_selected or self.X_plane_image_roi_pseudoinverse is None:
+        if self.position.image_roi_selected or self.X_plane_image_roi_pseudoinverse is None:
             self.X_plane_image_roi_pseudoinverse = np.dot(np.linalg.inv(np.dot(self.X_plane_image_roi.transpose(), self.X_plane_image_roi)), self.X_plane_image_roi.transpose())
     
     def _calculate_X_plane_recon_rectangle_pseudoinverse(self):
         self.X_plane_recon_rectangle_pseudoinverse = np.dot(np.linalg.inv(np.dot(self.X_plane_recon_rectangle.transpose(), self.X_plane_recon_rectangle)), self.X_plane_recon_rectangle.transpose())
         
-    def get_pos_image_roi(self) -> Mask:
-        return self.pos_image_roi.copy()
+    def get_place_image_roi(self) -> Mask:
+        return self.place_image_roi.copy()
     
-    def get_pos_recon_corners(self) -> List[List[int]]:
-        return self.pos_recon_corners
+    def get_place_recon_corners(self) -> List[List[int]]:
+        return self.place_recon_corners
     
     def get_shift_vector(self) -> List[int]:
         return self.shift_vector
@@ -172,30 +172,30 @@ class Position:
     def get_X_plane_recon_rectangle_pseudoinverse(self) -> npt.NDArray[np.float64]:
         return self.X_plane_recon_rectangle_pseudoinverse
     
-    def set_pos_image_roi(self):
-        self.pos_image_roi = ndimage.shift(self.location.get_loc_image_roi(), shift=self.shift_vector, mode='wrap')
+    def set_place_image_roi(self):
+        self.place_image_roi = ndimage.shift(self.position.get_pos_image_roi(), shift=self.shift_vector, mode='wrap')
             
-    def set_pos_recon_corners(self):
-        height = self.location.get_loc_recon_corners()[0][1] - self.location.get_loc_recon_corners()[0][0]
-        width = self.location.get_loc_recon_corners()[1][1] - self.location.get_loc_recon_corners()[1][0]
-        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[0])<0:
-            self.pos_recon_corners[0][0] = 0
-            self.pos_recon_corners[0][1] = height
-        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[0])>cfg.image_size[0]:
-            self.pos_recon_corners[0][0] = cfg.image_size[0] - height
-            self.pos_recon_corners[0][1] = cfg.image_size[0]
-        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[1])<0:
-            self.pos_recon_corners[1][0] = 0
-            self.pos_recon_corners[1][1] = width
-        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[1])>cfg.image_size[1]:
-            self.pos_recon_corners[1][0] = cfg.image_size[1] - width
-            self.pos_recon_corners[1][1] = cfg.image_size[1]
+    def set_place_recon_corners(self):
+        height = self.position.get_pos_recon_corners()[0][1] - self.position.get_pos_recon_corners()[0][0]
+        width = self.position.get_pos_recon_corners()[1][1] - self.position.get_pos_recon_corners()[1][0]
+        if self.position.get_pos_recon_corners()[0][0] + np.round(self.get_shift_vector()[0])<0:
+            self.place_recon_corners[0][0] = 0
+            self.place_recon_corners[0][1] = height
+        if self.position.get_pos_recon_corners()[0][0] + np.round(self.get_shift_vector()[0])>cfg.image_size[0]:
+            self.place_recon_corners[0][0] = cfg.image_size[0] - height
+            self.place_recon_corners[0][1] = cfg.image_size[0]
+        if self.position.get_pos_recon_corners()[0][0] + np.round(self.get_shift_vector()[1])<0:
+            self.place_recon_corners[1][0] = 0
+            self.place_recon_corners[1][1] = width
+        if self.position.get_pos_recon_corners()[0][0] + np.round(self.get_shift_vector()[1])>cfg.image_size[1]:
+            self.place_recon_corners[1][0] = cfg.image_size[1] - width
+            self.place_recon_corners[1][1] = cfg.image_size[1]
     
     def set_shift_vector(self, shift_vector: List[int]):
         self.shift_vector = shift_vector
-        if self.location.image_roi_selected or self.location.recon_rectangle_selected:
-            self.set_pos_image_roi()
-            self.set_pos_recon_corners()
+        if self.position.image_roi_selected or self.position.recon_rectangle_selected:
+            self.set_place_image_roi()
+            self.set_place_recon_corners()
             self._calculate_X_planes()
             self._calculate_X_planes_pseudoinverse()
         if self.first_timestep:
@@ -210,13 +210,13 @@ class Position:
 class Hologram:
     def __init__(self,
                  fname: Union[str, Path],
-                 position: Position,
+                 placement: Placement,
                  focus: float = None,
                  ):
 
         self.fname: Path = Path(fname)
         self.corrupted = self._check_corrupted()
-        self.position: Position = position
+        self.placement: Placement = placement
         self.focus: float = focus # Focus distance
         self.focus_score: float = None # score of evaluatino function at the Focus point (minimum)
         self.nfev: int = 0 # number of function evaluatons needed
@@ -238,8 +238,8 @@ class Hologram:
                     x = np.linspace(xmax, xmax+(xmax-xmin), cfg.nfevaluations[i])
                     focus_scores = np.array([self._evaluate_reconstruction_distance([x[j]], i) for j in range(x.shape[0])])
                 spacing = x[1] - x[0]
-                xmin = x[np.argmin(focus_scores)] - spacing
-                xmax = x[np.argmin(focus_scores)] + spacing
+                xmin = x[np.argmin(focus_scores)] - spacing/2
+                xmax = x[np.argmin(focus_scores)] + spacing/2
                 if cfg.nfev_max<self.nfev:
                     print(f'{self.fname} could not find a focus point')
                     self.corrupted = True
@@ -250,9 +250,9 @@ class Hologram:
                 print(f'{self.fname} focus is out of borders with {np.round(self.focus,3)}')
         else:
             bounds = Bounds(lb=cfg.reconstruction_distance_low, ub=cfg.reconstruction_distance_high)
-            res = minimize(self._evaluate_reconstruction_distance, [self.position.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
+            res = minimize(self._evaluate_reconstruction_distance, [self.placement.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
             self.focus = res.x[0]
-            self.position.set_x0_guess(self.focus)
+            self.placement.set_x0_guess(self.focus)
             self.focus_score = res.fun
             self.nfev = res.nfev
         self.cplx_image = self._cplx_image()
@@ -319,36 +319,36 @@ class Hologram:
         return self.cplx_image.copy()
     
     def _subtract_plane(self, field: Image) -> CplxImage:
-        theta = np.dot(self.position.get_X_plane_image_roi_pseudoinverse(), field[self.position.get_pos_image_roi()==True].reshape(-1))
-        plane = np.dot(self.position.get_X_plane(), theta).reshape(field.shape[0], field.shape[1])
+        theta = np.dot(self.placement.get_X_plane_image_roi_pseudoinverse(), field[self.placement.get_place_image_roi()==True].reshape(-1))
+        plane = np.dot(self.placement.get_X_plane(), theta).reshape(field.shape[0], field.shape[1])
         return field-plane
     
     def _subtract_plane_recon_rectangle(self, field: Image) -> CplxImage:
-        field = crop_image(field, self.position.get_pos_recon_corners())
-        theta = np.dot(self.position.get_X_plane_recon_rectangle_pseudoinverse(), field.reshape(-1))
-        ymin, ymax = self.position.get_pos_recon_corners()[0][0], self.position.get_pos_recon_corners()[0][1]
-        plane = np.dot(self.position.get_X_plane_recon_rectangle(), theta).reshape((ymax-ymin)%(cfg.image_size[0]+1), -1)
+        field = crop_image(field, self.placement.get_place_recon_corners())
+        theta = np.dot(self.placement.get_X_plane_recon_rectangle_pseudoinverse(), field.reshape(-1))
+        ymin, ymax = self.placement.get_place_recon_corners()[0][0], self.placement.get_place_recon_corners()[0][1]
+        plane = np.dot(self.placement.get_X_plane_recon_rectangle(), theta).reshape((ymax-ymin)%(cfg.image_size[0]+1), -1)
         return field-plane
 
 class SpatialPhaseAveraging:
     def __init__(self,
-                 location: Location,
-                 positions: List[Position],
+                 position: Position,
+                 placements: List[Placement],
                  timestep: int,
                  ):
         
-        self.location: Location = location
+        self.position: Position = position
         self.timestep: int = timestep
-        self.positions: List[Position] = positions
+        self.placements: List[Placement] = placements
         self.holograms: List[Hologram] = self._generate_holograms()
-        self.num_pos: int = len(self.holograms)
+        self.num_place: int = len(self.holograms)
         self.background: CplxImage = self._background()
         self.spatial_avg: CplxImage = self._spatial_avg()
     
     
     def _background(self) -> CplxImage:
-        if self.location.background is not None:
-            return self.location.get_background()
+        if self.position.background is not None:
+            return self.position.get_background()
         else:
             images = np.zeros((len(self.holograms), cfg.image_size[0], cfg.image_size[1]), dtype=np.complex64)
             for i in range(len(self.holograms)):
@@ -356,34 +356,34 @@ class SpatialPhaseAveraging:
             background = (np.median(np.abs(images), axis=0)*np.exp(1j*np.median(np.angle(images), axis=0))).astype(np.complex64)
             
             # Averaging the first 10 backgrounds
-            self.location.backgrounds.append(background)
-            if len(self.location.backgrounds) == 10:
-                self.location.average_backgrounds()
+            self.position.backgrounds.append(background)
+            if len(self.position.backgrounds) == 10:
+                self.position.average_backgrounds()
             
             return background
     
     def _spatial_avg(self) -> CplxImage:
         spatial_avg = self.holograms[0].get_cplx_image()
         spatial_avg /= self.background
-        for i in range(1, self.num_pos):
+        for i in range(1, self.num_place):
             cplx_image = self.holograms[i].get_cplx_image()
             cplx_image /= self.background
             cplx_image, shift_vector = self._shift_image(spatial_avg, cplx_image)
-            self.positions[i].set_shift_vector(shift_vector)
-            cplx_image = self._subtract_phase_offset(cplx_image, spatial_avg, self.positions[i].get_pos_image_roi())
+            self.placements[i].set_shift_vector(shift_vector)
+            cplx_image = self._subtract_phase_offset(cplx_image, spatial_avg, self.placements[i].get_place_image_roi())
             spatial_avg += cplx_image
-        return spatial_avg/self.num_pos
+        return spatial_avg/self.num_place
     
     def _generate_holograms(self) -> List[Hologram]:
         holograms = []
-        for p in self.positions:
-            fname = Path(str(p.pos_dir) + os.sep + "Holograms" + os.sep + str(self.timestep).zfill(5) + "_holo.tif")
-            hologram = Hologram(fname, p)
+        for pl in self.placements:
+            fname = Path(str(pl.place_dir) + os.sep + "Holograms" + os.sep + str(self.timestep).zfill(5) + "_holo.tif")
+            hologram = Hologram(fname, pl)
             if hologram.corrupted:
                 continue
             hologram.calculate_focus()
             # first guess is the focus point of the last image
-            p.set_x0_guess(hologram.focus)
+            pl.set_x0_guess(hologram.focus)
             holograms.append(hologram)
         return [h for h in holograms if not h.corrupted]
     
@@ -416,16 +416,16 @@ class Pipeline:
             self,
             base_dir: Union[str, Path],
             saving_dir: Union[str, Path] = None,
-            restrict_locations: slice = None,
+            restrict_positions: slice = None,
             restrict_timesteps: slice = None,
             ):
         
         self.base_dir: Path = Path(base_dir)
         self.saving_dir: Path = self._saving_dir(saving_dir)
         self.data_file_path: Path = None
-        self.restrict_locations: slice = restrict_locations
+        self.restrict_positions: slice = restrict_positions
         self.restrict_timesteps: range = restrict_timesteps
-        self.locations: List[Location] = self._locations()
+        self.positions: List[Position] = self._positions()
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
         self.image_count: int = 0
@@ -459,24 +459,24 @@ class Pipeline:
         
         return [[ymin, ymax], [xmin, xmax]]
 
-    def _locations(self) -> List[Location]:
-        all_locations =[Location(Path(f.path)) for f in os.scandir(self.base_dir) if f.is_dir()]
-        if self.restrict_locations == None:
-            return all_locations
+    def _positions(self) -> List[Position]:
+        all_positions =[Position(Path(f.path)) for f in os.scandir(self.base_dir) if f.is_dir()]
+        if self.restrict_positions == None:
+            return all_positions
         else:
-            return all_locations[self.restrict_locations]
+            return all_positions[self.restrict_positions]
     
     def process(self):
         if cfg._LOADED is False:
             raise RuntimeError(
                 "configuration has not been loaded, do so by executing sa.config.load_config"
             )
-        for l in self.locations:
-            positions = [Position(pos_dir=Path(str(f.path)), location=l) for f in os.scandir(str(l.loc_dir)) if f.is_dir()]
+        for po in self.positions:
+            placements = [Placement(place_dir=Path(str(f.path)), position=po) for f in os.scandir(str(po.pos_dir)) if f.is_dir()]
             last_phase_image = None
             for t in self.timesteps:
                 start_image = time.time()
-                spa = SpatialPhaseAveraging(l, positions, t)
+                spa = SpatialPhaseAveraging(po, placements, t)
                 averaged_phase_image = get_result_unwrap(np.angle(spa.get_spatial_avg()))
                 if last_phase_image is not None:
                     averaged_phase_image = self._temporal_shift_correction(last_phase_image, averaged_phase_image)
@@ -487,15 +487,15 @@ class Pipeline:
                     self.data_file_path = self._write_data_file()
                     self.image_settings_updated = True
                 
-                save_loc_folder = str(self.saving_dir) + os.sep + l.loc_name
-                if not os.path.exists(save_loc_folder):
-                    os.makedirs(save_loc_folder)
+                save_pos_folder = str(self.saving_dir) + os.sep + po.pos_name
+                if not os.path.exists(save_pos_folder):
+                    os.makedirs(save_pos_folder)
                 
-                self._save_image(phase_image, save_loc_folder, t)
+                self._save_image(phase_image, save_pos_folder, t)
                 
                 last_phase_image = averaged_phase_image
                 duration_timestep = np.round(time.time()-start_image,1)
-                print(f"loc: {l.loc_name}, timestep: {t} done in {duration_timestep} seconds")
+                print(f"pos: {po.pos_name}, timestep: {t} done in {duration_timestep} seconds")
                 self._update_data_file(spa, duration_timestep)
                 
                 self.image_count += 1
@@ -506,17 +506,17 @@ class Pipeline:
                         logout_login_koala()
                 del spa
                 
-            del positions
+            del placements
             gc.collect()
             
-    def _save_image(self, phase_image, save_loc_folder, t):
+    def _save_image(self, phase_image, save_pos_folder, t):
         if cfg.save_format == ".tif":
             ph = (((phase_image + np.pi/2) / np.pi) * 65535).astype(np.int16)
-            fname = save_loc_folder + os.sep + f"pos{save_loc_folder[-5:]}cha1fra{str(t).zfill(5)}.tif"
+            fname = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha1fra{str(t).zfill(5)}.tif"
             tifffile.imwrite(fname, ph)
             
         if cfg.save_format == ".bin":
-            fname = save_loc_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
+            fname = save_pos_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
             binkoala.write_mat_bin(fname, phase_image, phase_image.shape[0], phase_image.shape[1], cfg.px_size, cfg.hconv, cfg.unit_code)
     
     def _saving_dir(self, saving_dir: Union[str, Path]) -> Path:
@@ -526,25 +526,25 @@ class Pipeline:
                 os.makedirs(str(saving_dir))
         return Path(saving_dir)
     
-    def select_locations_image_roi(self):
-        for l in self.locations:
-            p0_dir = Path(str(l.loc_dir) + os.sep + os.listdir(str(l.loc_dir))[0])
-            p0 = Position(pos_dir=p0_dir, location=l)
-            fname = Path(str(p0.pos_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
+    def select_positions_image_roi(self):
+        for po in self.positions:
+            p0_dir = Path(str(po.pos_dir) + os.sep + os.listdir(str(po.pos_dir))[0])
+            p0 = Placement(place_dir=p0_dir, position=po)
+            fname = Path(str(p0.place_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
             hologram = Hologram(fname, p0, focus = cfg.reconstruction_distance_guess)
             ph_image = np.angle(hologram.get_cplx_image())
             mask = self._get_mask_from_rectangle(ph_image)
-            l.set_loc_image_roi(mask)
+            po.set_pos_image_roi(mask)
     
-    def select_locations_recon_rectangle(self):
-        for l in self.locations:
-            p0_dir = Path(str(l.loc_dir) + os.sep + os.listdir(str(l.loc_dir))[0])
-            p0 = Position(pos_dir=p0_dir, location=l)
-            fname = Path(str(p0.pos_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
+    def select_positions_recon_rectangle(self):
+        for po in self.positions:
+            p0_dir = Path(str(po.pos_dir) + os.sep + os.listdir(str(po.pos_dir))[0])
+            p0 = Placement(place_dir=p0_dir, position=po)
+            fname = Path(str(p0.place_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
             hologram = Hologram(fname, p0, focus = cfg.reconstruction_distance_guess)
             ph_image = np.angle(hologram.get_cplx_image())
             crop_coords = self._get_rectangle_coordinates(ph_image)
-            l.set_loc_recon_corners(crop_coords)
+            po.set_pos_recon_corners(crop_coords)
             
     def _temporal_shift_correction(self, reference_image: Image, moving_image: Image) -> Image:
         shift_measured, error, diffphase = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, normalization=None)
@@ -553,7 +553,7 @@ class Pipeline:
         
     def _timesteps(self) -> range:
         if self.restrict_timesteps == None:
-            holo_path = str(self.base_dir)+os.sep+self.locations[0].loc_name + os.sep + "00001_00001\Holograms"
+            holo_path = str(self.base_dir)+os.sep+self.positions[0].pos_name + os.sep + "00001_00001\Holograms"
             first_holo = int(sorted(os.listdir(holo_path))[0][:5])
             num_timesteps = len(os.listdir(holo_path))
             all_timesteps = range(first_holo, first_holo + num_timesteps)
@@ -565,11 +565,11 @@ class Pipeline:
         with open(self.data_file_path, 'r') as file:
             data = json.load(file)
         
-        location = spa.location.loc_name
+        position = spa.position.pos_name
         timestep = spa.timestep
-        image_name = f'location_{location}_timestep_{str(timestep).zfill(5)}'
+        image_name = f'position_{position}_timestep_{str(timestep).zfill(5)}'
         data["images"][image_name] = {
-            "location" : int(location),
+            "position" : int(position),
             "timestep" : timestep,
             "time": time,
             "foci": tuple(holo.focus for holo in spa.holograms),
@@ -590,7 +590,7 @@ class Pipeline:
                 "optimizing_method": cfg.optimizing_method,
                 "local_grid_search": cfg.local_grid_search,
                 "nfevaluations": cfg.nfevaluations,
-                "final_grid_spacing": (cfg.reconstruction_distance_high-cfg.reconstruction_distance_low)/np.prod([(f-1)/2 for f in cfg.nfevaluations]),
+                "final_grid_spacing": (cfg.reconstruction_distance_high-cfg.reconstruction_distance_low)/np.prod([f-1 for f in cfg.nfevaluations]),
                 "nfev_max": cfg.nfev_max,
                 "tolerance": cfg.tolerance,
                 "reconstruction_distance_low": cfg.reconstruction_distance_low,

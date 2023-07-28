@@ -33,10 +33,10 @@ KOALA_CONFIG_NR = None
 DISPLAY_ALWAYS_ON: bool = True
 
 
-focus_method: Tuple[str] = ("std_ph_sobel", "std_amp", "std_amp", "std_amp") # 'std_amp', 'sobel_squared_std', 'combined'
+focus_method: Tuple[str] = ("std_ph_sobel", "std_amp", "std_amp", "std_amp", "std_amp") # 'std_amp', 'sobel_squared_std', 'combined'
 
 local_grid_search: bool = True
-nfevaluations : Tuple[int] = (10, 10, 10, 10)
+nfevaluations : Tuple[int] = (10, 5, 5, 5, 5)
 nfev_max: int = 200
 
 optimizing_method: str = "Powell" # Powell
@@ -56,7 +56,7 @@ unit_code : int = 1
 image_cut : Tuple[Tuple[int, int], Tuple[int, int]] = ((10, 710), (90, 790))
 save_format: str = ".tif"
 
-koala_reset_frequency: int = 5
+koala_reset_frequency: int = 10
 
 
 def load_config(koala_config_nr: int = None, display_always_on: bool = True,
