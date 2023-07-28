@@ -30,15 +30,20 @@ KOALA_HOST = None
 "koala host"
 KOALA_CONFIG_NR = None
 "selected koala configuration number"
-DISPLAY_ALWAYS_ON: bool = False
+DISPLAY_ALWAYS_ON: bool = True
 
 
-focus_method: str = "combined"
-optimizing_method: str = "Powell"
+focus_method: Tuple[str] = ("std_ph_sobel", "std_amp", "std_amp", "std_amp") # 'std_amp', 'sobel_squared_std', 'combined'
+
+local_grid_search: bool = True
+nfevaluations : Tuple[int] = (10, 10, 10, 10)
+nfev_max: int = 200
+
+optimizing_method: str = "Powell" # Powell
 tolerance: Optional[float] = None
 
 reconstruction_distance_low: float = -3.0
-reconstruction_distance_high: float = -1.5
+reconstruction_distance_high: float = -1.0
 reconstruction_distance_guess: float = -2.3
 
 plane_fit_order: int = 4
@@ -48,14 +53,18 @@ image_size: Tuple[int, int] = (800, 800)
 px_size: float = 0.12976230680942535*1e-6
 hconv: float = 794*1e-9/(2*_np.pi)
 unit_code : int = 1
+image_cut : Tuple[Tuple[int, int], Tuple[int, int]] = ((10, 710), (90, 790))
+save_format: str = ".tif"
 
-koala_reset_frequency: int = 10
+koala_reset_frequency: int = 5
 
 
-def load_config(koala_config_nr: int = None, display_always_on: bool = False,
-                focus_methodIn: str = None, optimizing_methodIn: str = None,
+def load_config(koala_config_nr: int = None, display_always_on: bool = True,
+                local_grid_searchIn: bool = None, nfevaluationsIn : Tuple[int] = None,
+                focus_methodIn: Tuple[str] = None, optimizing_methodIn: str = None,
                 reconstruction_distance_lowIn: float = None, reconstruction_distance_highIn: float = None,
                 reconstruction_distance_guessIn: float = None, plane_fit_orderIn: int = None,
+                image_cutIn: Tuple[Tuple[int, int], Tuple[int, int]] = None, save_formatIn: str = None,
                 koala_reset_frequencyIn: int = None):
     
     # Open Koala and load Configurations
@@ -90,6 +99,14 @@ def load_config(koala_config_nr: int = None, display_always_on: bool = False,
     global DISPLAY_ALWAYS_ON
     DISPLAY_ALWAYS_ON = display_always_on
     
+    if local_grid_searchIn is not None:
+        global local_grid_search
+        local_grid_search = local_grid_searchIn
+        
+    if nfevaluationsIn is not None:
+        global nfevaluations
+        nfevaluations = nfevaluationsIn
+
     if focus_methodIn is not None:
         global focus_method
         focus_method = focus_methodIn
@@ -113,6 +130,14 @@ def load_config(koala_config_nr: int = None, display_always_on: bool = False,
     if plane_fit_orderIn is not None:
         global plane_fit_order
         plane_fit_order = plane_fit_orderIn
+        
+    if image_cutIn is not None:
+        global image_cut
+        image_cut = image_cutIn
+
+    if save_formatIn is not None:
+        global save_format
+        save_format = save_formatIn
     
     if koala_reset_frequencyIn is not None:
         global koala_reset_frequency
@@ -181,7 +206,3 @@ def _find_image_position(screenshot, image, threshold=0.95):
     center_y = int(max_loc[1] + h/2)
     
     return center_x, center_y
-
-
-
-

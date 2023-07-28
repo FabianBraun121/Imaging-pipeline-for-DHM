@@ -19,6 +19,7 @@ from skimage.registration import phase_cross_correlation
 from scipy import ndimage
 from sklearn.preprocessing import PolynomialFeatures
 from scipy.optimize import minimize, Bounds
+import matplotlib.pyplot as plt
 
 from .utilities import cfg, get_result_unwrap, logout_login_koala, shut_down_restart_koala, crop_image
 from . import binkoala
@@ -175,17 +176,28 @@ class Position:
         self.pos_image_roi = ndimage.shift(self.location.get_loc_image_roi(), shift=self.shift_vector, mode='wrap')
             
     def set_pos_recon_corners(self):
-        self.pos_recon_corners[0][0] = int(self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[0],0)) % (cfg.image_size[0]+1)
-        self.pos_recon_corners[0][1] = int(self.location.get_loc_recon_corners()[0][1] + np.round(self.get_shift_vector()[0],0)) % (cfg.image_size[0]+1)
-        self.pos_recon_corners[1][0] = int(self.location.get_loc_recon_corners()[1][0] + np.round(self.get_shift_vector()[1],0)) % (cfg.image_size[1]+1)
-        self.pos_recon_corners[1][1] = int(self.location.get_loc_recon_corners()[1][1] + np.round(self.get_shift_vector()[1],0)) % (cfg.image_size[1]+1)
+        height = self.location.get_loc_recon_corners()[0][1] - self.location.get_loc_recon_corners()[0][0]
+        width = self.location.get_loc_recon_corners()[1][1] - self.location.get_loc_recon_corners()[1][0]
+        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[0])<0:
+            self.pos_recon_corners[0][0] = 0
+            self.pos_recon_corners[0][1] = height
+        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[0])>cfg.image_size[0]:
+            self.pos_recon_corners[0][0] = cfg.image_size[0] - height
+            self.pos_recon_corners[0][1] = cfg.image_size[0]
+        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[1])<0:
+            self.pos_recon_corners[1][0] = 0
+            self.pos_recon_corners[1][1] = width
+        if self.location.get_loc_recon_corners()[0][0] + np.round(self.get_shift_vector()[1])>cfg.image_size[1]:
+            self.pos_recon_corners[1][0] = cfg.image_size[1] - width
+            self.pos_recon_corners[1][1] = cfg.image_size[1]
     
     def set_shift_vector(self, shift_vector: List[int]):
         self.shift_vector = shift_vector
-        self.set_pos_image_roi()
-        self.set_pos_recon_corners()
-        self._calculate_X_planes()
-        self._calculate_X_planes_pseudoinverse()
+        if self.location.image_roi_selected or self.location.recon_rectangle_selected:
+            self.set_pos_image_roi()
+            self.set_pos_recon_corners()
+            self._calculate_X_planes()
+            self._calculate_X_planes_pseudoinverse()
         if self.first_timestep:
             self._calculate_X_plane_recon_rectangle()
             self._calculate_X_plane_recon_rectangle_pseudoinverse()
@@ -207,16 +219,42 @@ class Hologram:
         self.position: Position = position
         self.focus: float = focus # Focus distance
         self.focus_score: float = None # score of evaluatino function at the Focus point (minimum)
+        self.nfev: int = 0 # number of function evaluatons needed
         self.cplx_image: CplxImage = None # as soon as the focus point is found this function is evaluated
     
     def calculate_focus(self):
         cfg.KOALA_HOST.LoadHolo(str(self.fname),1)
         cfg.KOALA_HOST.SetUnwrap2DState(True)
-        bounds = Bounds(lb=cfg.reconstruction_distance_low, ub=cfg.reconstruction_distance_high)
-        res = minimize(self._evaluate_reconstruction_distance, [self.position.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
-        self.focus = res.x[0]
-        self.position.set_x0_guess(self.focus)
-        self.focus_score = res.fun
+        
+        if cfg.local_grid_search:
+            xmin, xmax = cfg.reconstruction_distance_low, cfg.reconstruction_distance_high
+            for i in range(len(cfg.focus_method)):
+                x = np.linspace(xmin, xmax, cfg.nfevaluations[i])
+                focus_scores = np.array([self._evaluate_reconstruction_distance([x[j]], i) for j in range(x.shape[0])])
+                while np.argmin(focus_scores) == 0 and cfg.nfev_max<self.nfev:
+                    x = np.linspace(xmin-(xmax-xmin), xmin, cfg.nfevaluations[i])
+                    focus_scores = np.array([self._evaluate_reconstruction_distance([x[j]], i) for j in range(x.shape[0])])
+                while np.argmin(focus_scores) == len(x)-1 and cfg.nfev_max<self.nfev:
+                    x = np.linspace(xmax, xmax+(xmax-xmin), cfg.nfevaluations[i])
+                    focus_scores = np.array([self._evaluate_reconstruction_distance([x[j]], i) for j in range(x.shape[0])])
+                spacing = x[1] - x[0]
+                xmin = x[np.argmin(focus_scores)] - spacing
+                xmax = x[np.argmin(focus_scores)] + spacing
+                if cfg.nfev_max<self.nfev:
+                    print(f'{self.fname} could not find a focus point')
+                    self.corrupted = True
+            self.focus = x[np.argmin(focus_scores)]
+            self.focus_score = np.min(focus_scores)
+            if self.focus<cfg.reconstruction_distance_low or cfg.reconstruction_distance_high<self.focus:
+                self.corrupted = True
+                print(f'{self.fname} focus is out of borders with {np.round(self.focus,3)}')
+        else:
+            bounds = Bounds(lb=cfg.reconstruction_distance_low, ub=cfg.reconstruction_distance_high)
+            res = minimize(self._evaluate_reconstruction_distance, [self.position.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
+            self.focus = res.x[0]
+            self.position.set_x0_guess(self.focus)
+            self.focus_score = res.fun
+            self.nfev = res.nfev
         self.cplx_image = self._cplx_image()
         
     def _check_corrupted(self):
@@ -243,18 +281,19 @@ class Hologram:
             cplx_image = np.exp(complex(0.,1.)*ph)
         return cplx_image.astype(np.complex64)
     
-    def _evaluate_reconstruction_distance(self, reconstruction_distance) -> float:
+    def _evaluate_reconstruction_distance(self, reconstruction_distance: List[float], focus_method_nr: int = 0) -> float:
+        self.nfev += 1
         cfg.KOALA_HOST.SetRecDistCM(reconstruction_distance[0])
         cfg.KOALA_HOST.OnDistanceChange()
-        if cfg.focus_method == 'std_amp':
+        if cfg.focus_method[focus_method_nr] == 'std_amp':
             amp = cfg.KOALA_HOST.GetIntensity32fImage()
             amp = self._subtract_plane_recon_rectangle(amp)
             return np.std(amp)
-        elif cfg.focus_method == 'sobel_squared_std':
+        elif cfg.focus_method[focus_method_nr] == 'std_ph_sobel':
             ph = cfg.KOALA_HOST.GetPhase32fImage()
             ph = self._subtract_plane_recon_rectangle(ph)
-            return -self._evaluate_sobel_squared_std(ph)
-        elif cfg.focus_method == 'combined':
+            return -self._evaluate_std_ph_sobel(ph)
+        elif cfg.focus_method[focus_method_nr] == 'combined':
             amp = cfg.KOALA_HOST.GetIntensity32fImage()
             amp = self._subtract_plane_recon_rectangle(amp)
             ph = cfg.KOALA_HOST.GetPhase32fImage()
@@ -263,12 +302,14 @@ class Hologram:
         else:
             print("Method ", cfg.focus_method, " to find the focus point is not implemented.")
     
-    def _evaluate_sobel_squared_std(self, gray_image) -> float:
+    def _evaluate_std_ph_sobel(self, gray_image) -> float:
+        gray_image = gray_image.clip(min=0)
+        gray_image = cv2.resize(gray_image, (gray_image.shape[0]//2, gray_image.shape[1]//2), interpolation = cv2.INTER_AREA)
         # Calculate gradient magnitude using Sobel filter
         grad_x = ndimage.sobel(gray_image, axis=0)
         grad_y = ndimage.sobel(gray_image, axis=1)
         # Calculate std squared sobel sharpness score
-        return np.std(grad_x ** 2 + grad_y ** 2)
+        return np.std(grad_x ** 4 + grad_y ** 4)
     
     def get_cplx_image(self) -> CplxImage:
         if self.cplx_image is None:
@@ -344,7 +385,7 @@ class SpatialPhaseAveraging:
             # first guess is the focus point of the last image
             p.set_x0_guess(hologram.focus)
             holograms.append(hologram)
-        return holograms
+        return [h for h in holograms if not h.corrupted]
     
     def get_background(self) -> CplxImage:
         return self.background.copy()
@@ -439,6 +480,7 @@ class Pipeline:
                 averaged_phase_image = get_result_unwrap(np.angle(spa.get_spatial_avg()))
                 if last_phase_image is not None:
                     averaged_phase_image = self._temporal_shift_correction(last_phase_image, averaged_phase_image)
+                phase_image =  averaged_phase_image[cfg.image_cut[0][0]:cfg.image_cut[0][1],cfg.image_cut[1][0]:cfg.image_cut[1][1]]
                 
                 if not self.image_settings_updated:
                     cfg.set_image_variables((cfg.KOALA_HOST.GetPhaseWidth(),cfg.KOALA_HOST.GetPhaseHeight()), cfg.KOALA_HOST.GetPxSizeUm()*1e-6, cfg.KOALA_HOST.GetLambdaNm(0)*1e-9)
@@ -448,11 +490,12 @@ class Pipeline:
                 save_loc_folder = str(self.saving_dir) + os.sep + l.loc_name
                 if not os.path.exists(save_loc_folder):
                     os.makedirs(save_loc_folder)
-                fname = save_loc_folder +"\\ph_timestep_"+str(t).zfill(5)+".bin"
-                binkoala.write_mat_bin(fname, averaged_phase_image, cfg.image_size[0], cfg.image_size[1], cfg.px_size, cfg.hconv, cfg.unit_code)
+                
+                self._save_image(phase_image, save_loc_folder, t)
+                
                 last_phase_image = averaged_phase_image
                 duration_timestep = np.round(time.time()-start_image,1)
-                print(fname, "done in", duration_timestep, "seconds")
+                print(f"loc: {l.loc_name}, timestep: {t} done in {duration_timestep} seconds")
                 self._update_data_file(spa, duration_timestep)
                 
                 self.image_count += 1
@@ -465,6 +508,16 @@ class Pipeline:
                 
             del positions
             gc.collect()
+            
+    def _save_image(self, phase_image, save_loc_folder, t):
+        if cfg.save_format == ".tif":
+            ph = (((phase_image + np.pi/2) / np.pi) * 65535).astype(np.int16)
+            fname = save_loc_folder + os.sep + f"pos{save_loc_folder[-5:]}cha1fra{str(t).zfill(5)}.tif"
+            tifffile.imwrite(fname, ph)
+            
+        if cfg.save_format == ".bin":
+            fname = save_loc_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
+            binkoala.write_mat_bin(fname, phase_image, phase_image.shape[0], phase_image.shape[1], cfg.px_size, cfg.hconv, cfg.unit_code)
     
     def _saving_dir(self, saving_dir: Union[str, Path]) -> Path:
         if saving_dir == None:
@@ -520,6 +573,7 @@ class Pipeline:
             "timestep" : timestep,
             "time": time,
             "foci": tuple(holo.focus for holo in spa.holograms),
+            "function_evaluations": int(np.sum([holo.nfev for holo in spa.holograms])),
         }
         
         with open(self.data_file_path, 'w') as file:
@@ -534,6 +588,10 @@ class Pipeline:
             "settings": {
                 "focus_method": cfg.focus_method,
                 "optimizing_method": cfg.optimizing_method,
+                "local_grid_search": cfg.local_grid_search,
+                "nfevaluations": cfg.nfevaluations,
+                "final_grid_spacing": (cfg.reconstruction_distance_high-cfg.reconstruction_distance_low)/np.prod([(f-1)/2 for f in cfg.nfevaluations]),
+                "nfev_max": cfg.nfev_max,
                 "tolerance": cfg.tolerance,
                 "reconstruction_distance_low": cfg.reconstruction_distance_low,
                 "reconstruction_distance_high": cfg.reconstruction_distance_high,
@@ -544,7 +602,10 @@ class Pipeline:
                 "px_size": cfg.px_size,
                 "hconv": cfg.hconv,
                 "unit_code": cfg.unit_code,
-                "koala_reset_frequency": cfg.koala_reset_frequency
+                "image_cut": cfg.image_cut,
+                "save_format": cfg.save_format,
+                "koala_reset_frequency": cfg.koala_reset_frequency,
+                "restart_koala": cfg.DISPLAY_ALWAYS_ON
             },
             "images": {}
         }
