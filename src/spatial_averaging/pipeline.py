@@ -228,14 +228,16 @@ class Hologram:
         
         if cfg.local_grid_search:
             xmin, xmax = cfg.reconstruction_distance_low, cfg.reconstruction_distance_high
-            for i in range(len(cfg.focus_method)):
+            for i in range(len(cfg.nfevaluations)):
                 x = np.linspace(xmin, xmax, cfg.nfevaluations[i])
                 focus_scores = np.array([self._evaluate_reconstruction_distance([x[j]], i) for j in range(x.shape[0])])
-                while np.argmin(focus_scores) == 0 and cfg.nfev_max<self.nfev:
+                while np.argmin(focus_scores) == 0 and self.nfev<cfg.nfev_max:
                     x = np.linspace(xmin-(xmax-xmin), xmin, cfg.nfevaluations[i])
+                    xmin, xmax = x[0], x[-1]
                     focus_scores = np.array([self._evaluate_reconstruction_distance([x[j]], i) for j in range(x.shape[0])])
-                while np.argmin(focus_scores) == len(x)-1 and cfg.nfev_max<self.nfev:
+                while np.argmin(focus_scores) == len(x)-1 and self.nfev<cfg.nfev_max:
                     x = np.linspace(xmax, xmax+(xmax-xmin), cfg.nfevaluations[i])
+                    xmin, xmax = x[0], x[-1]
                     focus_scores = np.array([self._evaluate_reconstruction_distance([x[j]], i) for j in range(x.shape[0])])
                 spacing = x[1] - x[0]
                 xmin = x[np.argmin(focus_scores)] - spacing/2
@@ -246,8 +248,8 @@ class Hologram:
             self.focus = x[np.argmin(focus_scores)]
             self.focus_score = np.min(focus_scores)
             if self.focus<cfg.reconstruction_distance_low or cfg.reconstruction_distance_high<self.focus:
-                self.corrupted = True
                 print(f'{self.fname} focus is out of borders with {np.round(self.focus,3)}')
+                self.corrupted = True
         else:
             bounds = Bounds(lb=cfg.reconstruction_distance_low, ub=cfg.reconstruction_distance_high)
             res = minimize(self._evaluate_reconstruction_distance, [self.placement.get_x0_guess()], method=cfg.optimizing_method, bounds=bounds)
