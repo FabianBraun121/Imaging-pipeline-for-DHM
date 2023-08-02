@@ -11,6 +11,8 @@ import spatial_averaging as sa
 
 # base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
 base_dir = r'F:\F9_20230228\2023-02-28 12-21-37'
-sa.config.load_config(koala_config_nr=221, display_always_on=True)
-pipe = sa.pipeline.Pipeline(base_dir=base_dir, restrict_positions=slice(0,1))
+sa.config.load_config(koala_config_nr=222, display_always_on=True)
+pipe = sa.pipeline.Pipeline(base_dir=base_dir, restrict_positions=slice(0,3))
+pipe.select_positions_recon_rectangle(same_for_all_pos = True)
 pipe.process()
+

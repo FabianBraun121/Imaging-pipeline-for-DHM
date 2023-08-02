@@ -105,13 +105,13 @@ class Placement:
         self.X_plane_pseudoinverse: npt.NDArray[np.float64] = None
         self.X_plane_image_roi: npt.NDArray[np.float64] = None
         self.X_plane_image_roi_pseudoinverse: npt.NDArray[np.float64] = None
+        self.X_plane_recon_rectangle: npt.NDArray[np.float64] = None
+        self.X_plane_recon_rectangle_pseudoinverse: npt.NDArray[np.float64] = None
         self.set_place_image_roi()
         self._calculate_X_planes()
         self._calculate_X_planes_pseudoinverse()
-        # Before the shift_vector is estimated the full image is used for calculating the focus point
-        self.first_timestep: bool = True
-        self.X_plane_recon_rectangle: npt.NDArray[np.float64] = self.X_plane
-        self.X_plane_recon_rectangle_pseudoinverse: npt.NDArray[np.float64] = self.X_plane_pseudoinverse
+        self._calculate_X_plane_recon_rectangle()
+        self._calculate_X_plane_recon_rectangle_pseudoinverse()
     
     def _calculate_X_planes(self):
         ## Relevel all images with a plane before averaging. This removes most errors with missalignment due to DHM errors
@@ -130,11 +130,15 @@ class Placement:
             self.X_plane_image_roi = self.X_plane
     
     def _calculate_X_plane_recon_rectangle(self):
-        heigth = (self.place_recon_corners[0][1]-self.place_recon_corners[0][0]) % (cfg.image_size[0]+1)
-        width = (self.place_recon_corners[1][1]-self.place_recon_corners[1][0]) % (cfg.image_size[0]+1)
-        X1, X2 = np.mgrid[:heigth, :width]
-        X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
-        self.X_plane_recon_rectangle = PolynomialFeatures(degree=cfg.plane_fit_order, include_bias=True).fit_transform(X)
+        if self.position.recon_rectangle_selected:
+            heigth = self.place_recon_corners[0][1]-self.place_recon_corners[0][0]
+            width = self.place_recon_corners[1][1]-self.place_recon_corners[1][0]
+            X1, X2 = np.mgrid[:heigth, :width]
+            X = np.hstack((X1.reshape(-1,1) , X2.reshape(-1,1)))
+            self.X_plane_recon_rectangle = PolynomialFeatures(degree=cfg.plane_fit_order, include_bias=True).fit_transform(X)
+        else:
+            self.X_plane_recon_rectangle = self.X_plane_image_roi
+            self._calculate_X_plane_recon_rectangle_pseudoinverse()
     
     def _calculate_X_planes_pseudoinverse(self):
         if self.X_plane_pseudoinverse is None:
@@ -198,10 +202,6 @@ class Placement:
             self.set_place_recon_corners()
             self._calculate_X_planes()
             self._calculate_X_planes_pseudoinverse()
-        if self.first_timestep:
-            self._calculate_X_plane_recon_rectangle()
-            self._calculate_X_plane_recon_rectangle_pseudoinverse()
-            self.first_timestep = False
         
     def set_x0_guess(self, x0_guess: float):
         self.x0_guess = x0_guess
@@ -428,6 +428,7 @@ class Pipeline:
         self.restrict_positions: slice = restrict_positions
         self.restrict_timesteps: range = restrict_timesteps
         self.positions: List[Position] = self._positions()
+        self.first_timestep: int = None
         self.timesteps: range = self._timesteps()
         self.image_settings_updated: bool = False
         self.image_count: int = 0
@@ -479,7 +480,7 @@ class Pipeline:
             for t in self.timesteps:
                 start_image = time.time()
                 spa = SpatialPhaseAveraging(po, placements, t)
-                averaged_phase_image = get_result_unwrap(np.angle(spa.get_spatial_avg()))
+                averaged_phase_image = get_result_unwrap(np.angle(spa.get_spatial_avg())).astype(np.float32)
                 if last_phase_image is not None:
                     averaged_phase_image = self._temporal_shift_correction(last_phase_image, averaged_phase_image)
                 phase_image =  averaged_phase_image[cfg.image_cut[0][0]:cfg.image_cut[0][1],cfg.image_cut[1][0]:cfg.image_cut[1][1]]
@@ -513,9 +514,13 @@ class Pipeline:
             
     def _save_image(self, phase_image, save_pos_folder, t):
         if cfg.save_format == ".tif":
-            ph = (((phase_image + np.pi/2) / np.pi) * 65535).astype(np.int16)
-            fname = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha1fra{str(t).zfill(5)}.tif"
-            tifffile.imwrite(fname, ph)
+            fname_unscaled = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha2fra{str(t + self.first_timestep).zfill(5)}.tif"
+            
+            tifffile.imwrite(fname_unscaled, phase_image.astype(np.float32))
+
+            ph_scaled = (((phase_image + np.pi/2) / np.pi) * 65535).astype(np.int16)
+            fname_scaled = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha1fra{str(t + self.first_timestep).zfill(5)}.tif"
+            tifffile.imwrite(fname_scaled, ph_scaled)
             
         if cfg.save_format == ".bin":
             fname = save_pos_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
@@ -528,37 +533,41 @@ class Pipeline:
                 os.makedirs(str(saving_dir))
         return Path(saving_dir)
     
-    def select_positions_image_roi(self):
+    def select_positions_image_roi(self, same_for_all_pos = False):
+        mask = None
         for po in self.positions:
-            p0_dir = Path(str(po.pos_dir) + os.sep + os.listdir(str(po.pos_dir))[0])
+            p0_dir = Path(str(po.pos_dir) + os.sep + [d for d in os.listdir(str(po.pos_dir)) if os.path.isdir(Path(po.pos_dir,d))][0])
             p0 = Placement(place_dir=p0_dir, position=po)
             fname = Path(str(p0.place_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
             hologram = Hologram(fname, p0, focus = cfg.reconstruction_distance_guess)
             ph_image = np.angle(hologram.get_cplx_image())
-            mask = self._get_mask_from_rectangle(ph_image)
+            if mask == None or not same_for_all_pos:
+                mask = self._get_mask_from_rectangle(ph_image)
             po.set_pos_image_roi(mask)
     
-    def select_positions_recon_rectangle(self):
+    def select_positions_recon_rectangle(self, same_for_all_pos = False):
+        crop_coords = None
         for po in self.positions:
-            p0_dir = Path(str(po.pos_dir) + os.sep + os.listdir(str(po.pos_dir))[0])
+            p0_dir = Path(str(po.pos_dir) + os.sep + [d for d in os.listdir(str(po.pos_dir)) if os.path.isdir(Path(po.pos_dir,d))][0])
             p0 = Placement(place_dir=p0_dir, position=po)
             fname = Path(str(p0.place_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
             hologram = Hologram(fname, p0, focus = cfg.reconstruction_distance_guess)
             ph_image = np.angle(hologram.get_cplx_image())
-            crop_coords = self._get_rectangle_coordinates(ph_image)
+            if crop_coords == None or not same_for_all_pos:
+                crop_coords = self._get_rectangle_coordinates(ph_image)
             po.set_pos_recon_corners(crop_coords)
             
     def _temporal_shift_correction(self, reference_image: Image, moving_image: Image) -> Image:
         shift_measured, error, diffphase = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, normalization=None)
         shift_vector = (shift_measured[0],shift_measured[1])
-        return ndimage.shift(moving_image, shift=shift_vector, mode='wrap')
+        return ndimage.shift(moving_image, shift=shift_vector, mode='constant')
         
     def _timesteps(self) -> range:
+        holo_path = str(self.base_dir)+os.sep+self.positions[0].pos_name + os.sep + "00001_00001\Holograms"
+        self.first_timestep = int(sorted(os.listdir(holo_path))[0][:5])
         if self.restrict_timesteps == None:
-            holo_path = str(self.base_dir)+os.sep+self.positions[0].pos_name + os.sep + "00001_00001\Holograms"
-            first_holo = int(sorted(os.listdir(holo_path))[0][:5])
             num_timesteps = len(os.listdir(holo_path))
-            all_timesteps = range(first_holo, first_holo + num_timesteps)
+            all_timesteps = range(self.first_timestep, self.first_timestep + num_timesteps)
             return all_timesteps
         else:
             return self.restrict_timesteps
@@ -588,6 +597,7 @@ class Pipeline:
         
         data = {
             "settings": {
+                "koala_configuration": cfg.KOALA_CONFIG_NR,
                 "focus_method": cfg.focus_method,
                 "optimizing_method": cfg.optimizing_method,
                 "local_grid_search": cfg.local_grid_search,
