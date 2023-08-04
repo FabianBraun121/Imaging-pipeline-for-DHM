@@ -8,11 +8,26 @@ import os
 os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src')
 
 import spatial_averaging as sa
+#import segmentation_tracking as st
+import config
 
-# base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
-base_dir = r'F:\F9_20230228\2023-02-28 12-21-37'
-sa.config.load_config(koala_config_nr=222, display_always_on=True)
-pipe = sa.pipeline.Pipeline(base_dir=base_dir, restrict_positions=slice(0,3))
-pipe.select_positions_recon_rectangle(same_for_all_pos = True)
+koala_config_nr = 222
+restrict_positions = slice(2)    # slice
+restrict_timesteps = None    # range
+select_recon_rectangle = False
+select_image_roi = False
+base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
+
+################# spatial averaging ####################################
+config.load_config(koala_config_nrIn=koala_config_nr)
+pipe = sa.pipeline.Pipeline(base_dir=base_dir, restrict_positions=restrict_positions,
+                            restrict_timesteps=restrict_timesteps)
+if select_recon_rectangle:
+    pipe.select_positions_recon_rectangle(same_for_all_pos = False)
+if select_image_roi:
+    pipe.select_positions_image_roi(same_for_all_pos = False)
 pipe.process()
 
+# ################# segmentation and tracking ############################
+# pipe_delta = st.delta_process.Delta_process(pipe.saving_dir)
+# pipe_delta.process()
