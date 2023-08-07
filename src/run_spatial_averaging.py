@@ -8,11 +8,11 @@ import os
 os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src')
 
 import spatial_averaging as sa
-#import segmentation_tracking as st
+import segmentation_tracking as st
 import config
 
 koala_config_nr = 222
-restrict_positions = slice(2)    # slice
+restrict_positions = slice(1,2)    # slice
 restrict_timesteps = None    # range
 select_recon_rectangle = False
 select_image_roi = False
@@ -27,7 +27,7 @@ if select_recon_rectangle:
 if select_image_roi:
     pipe.select_positions_image_roi(same_for_all_pos = False)
 pipe.process()
-
-# ################# segmentation and tracking ############################
-# pipe_delta = st.delta_process.Delta_process(pipe.saving_dir)
-# pipe_delta.process()
+#%%
+################# segmentation and tracking ############################
+pipe_delta = st.delta_process.Delta_process(pipe.saving_dir, restrict_positions=restrict_positions)
+pipe_delta.process()

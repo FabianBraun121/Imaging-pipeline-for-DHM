@@ -5,65 +5,69 @@ Created on Thu Apr  6 09:24:03 2023
 @author: SWW-Bc20
 """
 import math
-# import os as _os
-# import json as _json
-# import numpy as _np
-# import subprocess as _subprocess
-# import time as _time
-# import cv2 as _cv2
-# import pyautogui as _pyautogui
-# import psutil as _psutil
-# import sys
-# Add Koala remote librairies to Path
-# sys.path.append(r'C:\Program Files\LynceeTec\Koala\Remote\Remote Libraries\x64')
-# from pyKoalaRemote import client
-# from warnings import warn as _warn
 from typing import Tuple, Optional
 
-# from . import __file__ as _spatavg_init  # Path to __init__ file
-
-# _SPATAVG_DIR = _os.path.dirname(_spatavg_init)
-# "spatial averaging lib install directory"
 _LOADED = False
-"Which config file was loaded"
+"Checks if config is loaded"
 KOALA_HOST = None
-"koala host"
+"koala host, remote connection with koala"
 
 
 koala_config_nr = None
-"selected koala configuration number"
+"koala configuration number"
 display_always_on: bool = True
-
-
-focus_method: Tuple[str] = ("std_ph_sobel", "std_amp", "std_amp", "std_amp", "std_amp") # 'std_amp', 'sobel_squared_std', 'combined'
+"restarting koala needs a grahical interface. Connection to display needs to be on. Display itself can be off"
 
 local_grid_search: bool = True
+"repeating grid search, around previous minimum (recommended). If False a scipy.optimize.minimize is used"
 nfevaluations : Tuple[int] = (10, 5, 5, 5, 5)
+"gridsize of nth repeating search"
+focus_method: Tuple[str] = ("std_ph_sobel", "std_amp", "std_amp", "std_amp", "std_amp") # 'std_amp', 'sobel_squared_std', 'combined'
+"functions used to find mimimum. std_ph_sobel recommended to find general location of mimimum, std_amp or combined recommended to find exact minimum."
+"If local_grid_search=False only the first function in focus_method tuple is used to find the minimum"
 nfev_max: int = 200
+"if minimum is found at the edges, an adjacent is used. If minimum is not found until nfev_max funciton evaluations iamge is labeled corrupted -> Message"
 
-optimizing_method: str = "Powell" # Powell
+optimizing_method: str = "Powell" # 'Nelder-Mead', 'Powell', 'CG', 'BFGS', 'L-BFGS-B', 'TNC', 'COBYLA','SLSQP', 'trust-constr'
+"If local_grid_search=False scipy.optimize.minimize is used. Method: Powell was found to work best"
 tolerance: Optional[float] = None
+"Tolerance for termination of minimization. None is recommended"
 
 reconstruction_distance_low: float = -3.0
+"Lowest tolerable focus distance. Minimization only searches above this distance. local_grid_search can find minium below, but deems the image corrupted"
 reconstruction_distance_high: float = -1.0
+"Highest tolerable focus distance. Minimization only searches below this distance. local_grid_search can find minium above, but deems the image corrupted"
 reconstruction_distance_guess: float = -2.3
+"This is the best guess of the reconstruction distance of the operator."
 
 plane_fit_order: int = 4
-use_amp: bool = False
+"""Images are not always flat. Some are only tilted others are on a rounded plane. This plane is calculated with the ordinary least squares method on the
+plane that features (x and y pixel positions) are polynomialy extended. This is the order of expansion. Generally order 4 or 5 is recommended.
+If the operator knows that the plane is less complex lower are fine aswell."""
+use_amp: bool = True
+"Is amplitude used for the spatial averaging of the image. True is recommended"
 
 image_size: Tuple[int, int] = (800, 800)
+"Input size of the Koala image. Is updated automatically"
 px_size: float = 0.12976230680942535*1e-6
+"pixel size of the Koala image in meters. Is updated automatically"
 hconv: float = 794*1e-9/(2*math.pi)
+"Conversion from degree into meters (optical path difference)"
 unit_code : int = 1
+"Unit code for koala. (0 -> no unit, 1 -> radians, 2 -> meters)"
 image_cut : Tuple[Tuple[int]] = ((10, 710), (90, 790))
+"Edges are not useable because of the spatial averaging. Image are cropped"
 save_format: str = ".tif"
+".tif or .bin. If image is also sent through delta it has to be .tif"
 
-koala_reset_frequency: int = 10
+koala_reset_frequency: int = 20
+"Koala slows down with time (due to accumulation of memory). Periodic restart is required. If local_grid_search=True frequency 20 is recommended, if False 10."
 
 dilute_cells: int = 2
+"""Some cells are right next to each other and since delta needs space between cells. So during training of delta the outer layer of the cells were eroded to
+create space. So after delta cells need to be diluted again."""
 
-
-def load_config(koala_config_nrIn: int, display_always_onIn: bool = True,
+def load_config(koala_config_nrIn: int, display_always_onIn: bool = None,
                 local_grid_searchIn: bool = None, nfevaluationsIn : Tuple[int] = None,
                 focus_methodIn: Tuple[str] = None, optimizing_methodIn: str = None,
                 reconstruction_distance_lowIn: float = None, reconstruction_distance_highIn: float = None,
@@ -71,33 +75,10 @@ def load_config(koala_config_nrIn: int, display_always_onIn: bool = True,
                 image_cutIn: Tuple[Tuple[int, int], Tuple[int, int]] = None, save_formatIn: str = None,
                 koala_reset_frequencyIn: int = None):
     
-    # # Open Koala and load Configurations
-    # if not _is_koala_running():
-    #     _open_koala()
-    
-    # global KOALA_HOST
-    # try:
-    #     KOALA_HOST.OpenPhaseWin()
-    # except:
-    #     KOALA_HOST = None
-    # if KOALA_HOST is None:
-    #     KOALA_HOST = client.pyKoalaRemoteClient()
-    #     KOALA_HOST.Connect('localhost')
-    #     KOALA_HOST.Login('admin')
-    
-    # global KOALA_CONFIG_NR
-    # if koala_config_nr is not None:
-    #     KOALA_CONFIG_NR = koala_config_nr
-    # if KOALA_CONFIG_NR is None:
-    #     raise ValueError(
-    #         """No Koala Configuration Number is selected."""
-    #     )
-    
-    # KOALA_HOST.OpenConfig(KOALA_CONFIG_NR)
-    # KOALA_HOST.OpenPhaseWin()
-    # KOALA_HOST.OpenIntensityWin()
-    # KOALA_HOST.OpenHoloWin()
-    
+    """
+    This function laods the koala configuration and can change any configuration of the pipeline. If None are selected recommended caonfigurations are used.
+    Configurations only reset to recommended configurations after restarting the python kernel.
+    """
     
     # Update the configuration settings if arguments are provided
     global koala_config_nr
@@ -162,55 +143,3 @@ def set_image_variables(image_size_in: Tuple, px_size_in: float, laser_lambd: fl
     px_size = px_size_in
     global hconv
     hconv = laser_lambd/(2*math.pi)
-
-
-
-# ########################## UGLY!! Function are duplicated, to cercumvent circular import from utilities #########################
-# def _open_koala():
-#     wd = _os.getcwd()
-#     _os.chdir(r"C:\Program Files\LynceeTec\Koala")
-#     _subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
-#     _time.sleep(4)
-#     _pyautogui.typewrite('admin')
-#     _pyautogui.press('tab')
-#     _pyautogui.typewrite('admin')
-#     _pyautogui.press('enter')
-#     _time.sleep(4)
-#     _os.chdir(wd)
-#     screenshot = _pyautogui.screenshot()
-#     remote_log = _cv2.imread(r'spatial_averaging/images/remote_log_icon.png')
-#     remote_log_pos = _find_image_position(screenshot, remote_log)
-#     _pyautogui.click(remote_log_pos)
-
-# def _is_koala_running():
-#     for proc in _psutil.process_iter(['name', 'exe']):
-#         if proc.info['name'] == 'Koala.exe' and proc.info['exe'] == r'C:\Program Files\LynceeTec\Koala\Koala.exe':
-#             return True
-#     return False
-
-# def _find_image_position(screenshot, image, threshold=0.95):
-#     """
-#     Finds the position of a given image in a given screenshot using template matching.
-#     Args:
-#         screenshot: A PIL Image object of the screenshot.
-#         image: A PIL Image object of the image to be located in the screenshot.
-#         threshold: A float indicating the threshold above which the match is considered valid (default: 0.95).
-#     Returns:
-#         A tuple of two integers representing the (x, y) coordinates of the center of the image in the screenshot.
-#         If the image is not found, returns None.
-#     """
-#     screenshot_array = _np.array(screenshot)
-#     image_array = _np.array(image)
-#     h, w = image_array.shape[:2]
-
-#     match = _cv2.matchTemplate(screenshot_array, image_array, _cv2.TM_CCOEFF_NORMED)
-#     # Find the position of the best match in the match matrix
-#     min_val, max_val, min_loc, max_loc = _cv2.minMaxLoc(match)
-#     if max_val<=threshold:
-#         return None
-    
-#     # Get the center coordinates of the best match
-#     center_x = int(max_loc[0] + w/2)
-#     center_y = int(max_loc[1] + h/2)
-    
-#     return center_x, center_y

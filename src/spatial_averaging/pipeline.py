@@ -35,19 +35,38 @@ Mask = npt.NDArray[np.uint8]
 
 
 class Position:
+    """
+    In each experiment different positions of the sample are observed. In this class informations of induvidual positions are shared here.
+    Order: Experment -> Position -> Placement -> Timestep
+    """
     def __init__(
             self,
             pos_dir: Union[str, Path],
             ):
+        """
+        Parameters
+        ----------
+        pos_dir : Union[str, Path]
+            Path into the folder of induvidual position. Folders of the different placements are expected in this folder.
+
+        Returns
+        -------
+        None.
+
+        """
         
         self.pos_dir: Path = Path(pos_dir)
+        "Path to position"
         self.pos_name: str = pos_dir.name
+        "position name, e.g. 00001"
         self.image_roi_selected: bool = False
+        
         self.pos_image_roi: Mask = np.ones(cfg.image_size, dtype=np.uint8)
         self.recon_rectangle_selected: bool = False
         self.pos_recon_corners: Tuple[Tuple[int]] = None  #((ymin, ymax), (xmin, xmax))
         self.backgrounds = []
         self.background = self._background()
+        
         
     def average_backgrounds(self):
         self.background = np.mean(np.abs(self.backgrounds), axis=0) * np.exp(1j* np.mean(np.angle(self.backgrounds), axis=0)).astype(np.complex64)
