@@ -202,18 +202,20 @@ class Placement:
         pos_corners = self.position.get_pos_recon_corners()
         height = pos_corners[0][1] - pos_corners[0][0]
         width = pos_corners[1][1] - pos_corners[1][0]
+        ((miny, maxy), (minx, maxx)) = self.get_place_recon_corners()
         if pos_corners[0][0] + np.round(self.get_shift_vector()[0])<0:
-            self.place_recon_corners[0][0] = 0
-            self.place_recon_corners[0][1] = height
+            miny = 0
+            maxy = height
         if pos_corners[0][0] + np.round(self.get_shift_vector()[0])>cfg.image_size[0]:
-            self.place_recon_corners[0][0] = cfg.image_size[0] - height
-            self.place_recon_corners[0][1] = cfg.image_size[0]
+            miny = cfg.image_size[0] - height
+            maxy = cfg.image_size[0]
         if pos_corners[0][0] + np.round(self.get_shift_vector()[1])<0:
-            self.place_recon_corners[1][0] = 0
-            self.place_recon_corners[1][1] = width
+            minx = 0
+            maxx = width
         if pos_corners[0][0] + np.round(self.get_shift_vector()[1])>cfg.image_size[1]:
-            self.place_recon_corners[1][0] = cfg.image_size[1] - width
-            self.place_recon_corners[1][1] = cfg.image_size[1]
+            minx = cfg.image_size[1] - width
+            maxx = cfg.image_size[1]
+        self.place_recon_corners = ((miny, maxy), (minx, maxx))
     
     def set_shift_vector(self, shift_vector: Tuple[int]):
         self.shift_vector = shift_vector
