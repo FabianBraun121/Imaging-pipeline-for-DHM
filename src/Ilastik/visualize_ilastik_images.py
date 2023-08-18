@@ -212,8 +212,8 @@ def save_tif_uint8(array, filename):
 #%%
 
 base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\ilastik'
-data_series = 'NN_20230407'
-position = '00010'
+data_series = 'E10_20230413'
+position = '00012'
 position_folder = base_folder + os.sep + data_series
 image_folder = position_folder + os.sep + f'{data_series}_{position}.h5'
 mask_folder = position_folder + os.sep + f'{data_series}_{position}_Object-Identities.h5'
@@ -229,7 +229,7 @@ save_base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\ilastik\all'
 save_images_folder = save_base_folder + os.sep + 'images'
 save_objectId_folder = save_base_folder + os.sep + 'objectId'
 
-for i in range(48):
+for i in range(19):
     timestep = str(i).zfill(5)
     name = f'{data_series}_{position}_{timestep}.tif'
     image = images[i]

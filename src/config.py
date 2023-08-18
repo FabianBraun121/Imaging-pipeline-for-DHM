@@ -4,9 +4,13 @@ Created on Thu Apr  6 09:24:03 2023
 
 @author: SWW-Bc20
 """
+import os
 import math
 from typing import Tuple, Optional
+from pathlib import Path
 
+BASE_PATH = os.path.normpath(os.path.dirname(__file__))
+"Folder where this file is in"
 _LOADED = False
 "Checks if config is loaded"
 KOALA_HOST = None
@@ -63,9 +67,11 @@ save_format: str = ".tif"
 koala_reset_frequency: int = 20
 "Koala slows down with time (due to accumulation of memory). Periodic restart is required. If local_grid_search=True frequency 20 is recommended, if False 10."
 
-dilute_cells: int = 2
+dilute_cells: int = 4
 """Some cells are right next to each other and since delta needs space between cells. So during training of delta the outer layer of the cells were eroded to
 create space. So after delta cells need to be diluted again."""
+
+delta_assets_path: Path = Path(Path(BASE_PATH).parent, 'data', 'delta_assets')
 
 def load_config(koala_config_nrIn: int, display_always_onIn: bool = None,
                 local_grid_searchIn: bool = None, nfevaluationsIn : Tuple[int] = None,

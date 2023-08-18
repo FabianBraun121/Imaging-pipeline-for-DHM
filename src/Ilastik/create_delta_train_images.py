@@ -140,14 +140,38 @@ image_folder = base_folder + os.sep + 'images'
 objectId_folder = base_folder + os.sep + 'objectId'
 save_base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\ilastik\delta'
 segmentation_folder = save_base_folder + os.sep + 'segmentation_set'
+if not os.path.exists(segmentation_folder):
+    os.mkdir(segmentation_folder)
 tracking_folder = save_base_folder + os.sep + 'tracking_set'
+if not os.path.exists(tracking_folder):
+    os.mkdir(tracking_folder)
 names = os.listdir(image_folder)
 
 unique_timelines = set(list([n[:-10] for n in names]))
 processed_timelines = []
+"""['F3_20230406_00001',
+'F3_20230406_00002',
+'F3_20230406_00003',
+'F3_20230406_00004',
+'NN_20230407_00001',
+'NN_20230407_00002',
+'NN_20230407_00003',
+'NN_20230407_00004',
+'NN_20230407_00006',
+'NN_20230407_00007',
+'NN_20230407_00009',
+'NN_20230407_00010',
+'E10_20230413_00001',
+'E10_20230413_00002',
+'E10_20230413_00003',
+'E10_20230413_00004',
+'E10_20230413_00005',
+'E10_20230413_00009']"""
+    
 for processed_timeline in processed_timelines:
     unique_timelines.remove(processed_timeline)
 
+#%%
 prev_image = None
 prev_segall = None
 prev_eroded_objectId = None
@@ -158,10 +182,19 @@ for t in unique_timelines:
     for timestep in timesteps:
         name = f'{t}_{str(timestep).zfill(5)}'
         image = tifffile.imread(image_folder + os.sep + name + '.tif')
+        seg_img_folder = segmentation_folder + os.sep + 'img'
+        if not os.path.exists(seg_img_folder):
+            os.mkdir(seg_img_folder)
         save_image_as_png16(image, segmentation_folder + os.sep + 'img' + os.sep + name + '.png')
         objectId = tifffile.imread(objectId_folder + os.sep + name + '.tif')
         
         segall, segall_wei, eroded_objectId = create_seg_weight_and_eroded_objectId(objectId)
+        seg_seg_folder = segmentation_folder + os.sep + 'seg'
+        if not os.path.exists(seg_seg_folder):
+            os.mkdir(seg_seg_folder)
+        seg_wei_folder = segmentation_folder + os.sep + 'wei'
+        if not os.path.exists(seg_wei_folder):
+            os.mkdir(seg_wei_folder)
         Image.fromarray(segall, mode='L').save(segmentation_folder + os.sep + 'seg' + os.sep + name + '.png')
         Image.fromarray(segall_wei, mode='L').save(segmentation_folder + os.sep + 'wei' + os.sep + name + '.png')
         if prev_image is not None:
@@ -215,25 +248,43 @@ for t in unique_timelines:
                 centroid_x, centroid_y, xmin, ymin, xmax, ymax = calculate_adjusted_centroids(region_mask, side_length//2)
                 
                 prev_image_cropped = prev_image[ymin : ymax, xmin : xmax]
+                track_previmg_folder = tracking_folder + os.sep + 'previmg'
+                if not os.path.exists(track_previmg_folder):
+                    os.mkdir(track_previmg_folder)
                 save_image_as_png16(prev_image_cropped, tracking_folder + os.sep + 'previmg' + os.sep + tracking_name + '.png')
                 image_cropped = image[ymin : ymax, xmin : xmax]
+                track_img_folder = tracking_folder + os.sep + 'img'
+                if not os.path.exists(track_img_folder):
+                    os.mkdir(track_img_folder)
                 save_image_as_png16(image_cropped, tracking_folder + os.sep + 'img' + os.sep + tracking_name + '.png')
                 segall_cropped = segall[ymin : ymax, xmin : xmax]
+                track_segall_folder = tracking_folder + os.sep + 'segall'
+                if not os.path.exists(track_segall_folder):
+                    os.mkdir(track_segall_folder)
                 Image.fromarray(segall_cropped, mode='L').save(tracking_folder + os.sep + 'segall' + os.sep + tracking_name + '.png')
                 
                 prev_eroded_objectId_cropped = prev_eroded_objectId[ymin : ymax, xmin : xmax]
                 prev_seg_cropped = np.zeros_like(prev_eroded_objectId_cropped, dtype=np.uint8)
                 region_mask = (prev_eroded_objectId_cropped == region)
                 prev_seg_cropped[region_mask] = 255
+                track_seg_folder = tracking_folder + os.sep + 'seg'
+                if not os.path.exists(track_seg_folder):
+                    os.mkdir(track_seg_folder)
                 Image.fromarray(prev_seg_cropped, mode='L').save(tracking_folder + os.sep + 'seg' + os.sep + tracking_name + '.png')
                 
                 parents_eroded_objectId_cropped = parents_eroded_objectId[ymin : ymax, xmin : xmax]
                 seg_cropped = np.zeros_like(parents_eroded_objectId_cropped, dtype=np.uint8)
                 region_mask = (parents_eroded_objectId_cropped == region)
                 seg_cropped[region_mask] = 255
+                track_mot_dau_folder = tracking_folder + os.sep + 'mot_dau'
+                if not os.path.exists(track_mot_dau_folder):
+                    os.mkdir(track_mot_dau_folder)
                 Image.fromarray(seg_cropped, mode='L').save(tracking_folder + os.sep + 'mot_dau' + os.sep + tracking_name + '.png')
                 
                 tracking_wei = create_tracking_wei(parents_eroded_objectId_cropped, region)
+                track_wei_folder = tracking_folder + os.sep + 'wei'
+                if not os.path.exists(track_wei_folder):
+                    os.mkdir(track_wei_folder)
                 Image.fromarray(tracking_wei, mode='L').save(tracking_folder + os.sep + 'wei' + os.sep + tracking_name + '.png')
 
         if os.path.isfile(image_folder + os.sep + f'{t}_{str(timestep+1).zfill(5)}.tif'):
