@@ -64,6 +64,9 @@ def evaluate_min_amp_std(amp):
 def evaluate_combined(amp, ph):
     return -np.std(ph)/np.std(amp)
 
+def mean_amp(amp):
+    return np.mean(amp)
+
 
 #%%
 ### Load this if only interested in restricted area of -3,1

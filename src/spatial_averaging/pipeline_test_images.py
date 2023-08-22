@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Tue Apr 11 10:24:04 2023
+Created on Tue Aug 22 15:28:10 2023
 
 @author: SWW-Bc20
 """
@@ -281,6 +281,22 @@ class Hologram:
             self.nfev = res.nfev
         self.cplx_image = self._cplx_image()
         
+        #################  start save test images block   #################
+        test_image_name = str(self.fname).replace("\\", "_")[3:]
+        cfg.KOALA_HOST.SetRecDistCM(cfg.reconstruction_distance_guess)
+        cfg.KOALA_HOST.OnDistanceChange()
+        ph = cfg.KOALA_HOST.GetPhase32fImage()
+        tifffile.imwrite(r'F:/test_images/unfocused_unflattened'+os.sep+test_image_name,ph)
+        ph = self._subtract_plane_recon_rectangle(ph)
+        tifffile.imwrite(r'F:/test_images/unfocused_flattened'+os.sep+test_image_name,ph)
+        cfg.KOALA_HOST.SetRecDistCM(self.focus)
+        cfg.KOALA_HOST.OnDistanceChange()
+        ph = cfg.KOALA_HOST.GetPhase32fImage()
+        tifffile.imwrite(r'F:/test_images/focused_unflattened'+os.sep+test_image_name,ph)
+        ph = self._subtract_plane_recon_rectangle(ph)
+        tifffile.imwrite(r'F:/test_images/focused_flattened'+os.sep+test_image_name,ph)
+        #################  end save test images block   #################
+        
     def _check_corrupted(self):
         # There are images that are only black, those images have a small size
         threshold = 1e5
@@ -391,15 +407,30 @@ class SpatialPhaseAveraging:
         spatial_avg = self.holograms[0].get_cplx_image()
         spatial_avg /= self.background
         place0_roi = self.placements[0].get_place_image_roi()
+        #################  start save test images block   #################
+        test_image_name = str(self.holograms[0].fname).replace("\\", "_")[3:]
+        ph = np.angle(spatial_avg)
+        tifffile.imwrite(r'F:/test_images/without_background'+os.sep+test_image_name,ph)
+        #################  end save test images block   #################
         for i in range(1, self.num_place):
             cplx_image = self.holograms[i].get_cplx_image()
             cplx_image /= self.background
-            place_roi = self.placements[i].get_place_image_roi()
+            #################  start save test images block   #################
+            test_image_name = str(self.holograms[i].fname).replace("\\", "_")[3:]
+            ph = np.angle(cplx_image)
+            tifffile.imwrite(r'F:/test_images/without_background'+os.sep+test_image_name,ph)
+            #################  end save test images block   #################
             cplx_image, shift_vector = self._shift_image(spatial_avg, cplx_image, place0_roi)
             self.placements[i].set_shift_vector(shift_vector)
             cplx_image = self._subtract_phase_offset(spatial_avg, cplx_image, place0_roi)
             spatial_avg += cplx_image
-        return spatial_avg/self.num_place
+        spatial_avg = spatial_avg/self.num_place
+        #################  start save test images block   #################
+        test_image_name = str(self.holograms[i].fname).replace("\\", "_")[3:]
+        ph = np.angle(spatial_avg)[cfg.image_cut[0][0]:cfg.image_cut[0][1],cfg.image_cut[1][0]:cfg.image_cut[1][1]]
+        tifffile.imwrite(r'F:/test_images/averaged'+os.sep+test_image_name,ph)
+        #################  end save test images block   #################
+        return spatial_avg
     
     def _generate_holograms(self) -> List[Hologram]:
         holograms = []
@@ -535,11 +566,11 @@ class Pipeline:
                     self.data_file_path = self._write_data_file()
                     self.image_settings_updated = True
                 
-                save_pos_folder = str(self.saving_dir) + os.sep + po.pos_name
-                if not os.path.exists(save_pos_folder):
-                    os.makedirs(save_pos_folder)
+                # save_pos_folder = str(self.saving_dir) + os.sep + po.pos_name
+                # if not os.path.exists(save_pos_folder):
+                #     os.makedirs(save_pos_folder)
                 
-                self._save_image(phase_image, save_pos_folder, t)
+                # self._save_image(phase_image, save_pos_folder, t)
                 
                 last_phase_image = averaged_phase_image
                 duration_timestep = np.round(time.time()-start_image,1)
@@ -638,8 +669,10 @@ class Pipeline:
 
     def _write_data_file(self) -> Path:
         current_datetime = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-        data_file_path = Path(self.saving_dir, f'data file {current_datetime}.json')
-        
+        # data_file_path = Path(self.saving_dir, f'data file {current_datetime}.json')
+        #################  start save test images block   #################
+        data_file_path = Path(r'F:/test_images/data_files', f'data file {current_datetime}.json')
+        #################  end save test images block   #################
         data = {
             "settings": {
                 "koala_configuration": cfg.koala_config_nr,
@@ -676,4 +709,3 @@ class Pipeline:
             json.dump(data, file, indent=4)  # Add indent parameter to make it readable
         
         return data_file_path
-        
