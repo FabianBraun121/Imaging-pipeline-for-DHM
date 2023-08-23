@@ -282,19 +282,20 @@ class Hologram:
         self.cplx_image = self._cplx_image()
         
         #################  start save test images block   #################
-        test_image_name = str(self.fname).replace("\\", "_")[3:]
-        cfg.KOALA_HOST.SetRecDistCM(cfg.reconstruction_distance_guess)
-        cfg.KOALA_HOST.OnDistanceChange()
-        ph = cfg.KOALA_HOST.GetPhase32fImage()
-        tifffile.imwrite(r'F:/test_images/unfocused_unflattened'+os.sep+test_image_name,ph)
-        ph = self._subtract_plane_recon_rectangle(ph)
-        tifffile.imwrite(r'F:/test_images/unfocused_flattened'+os.sep+test_image_name,ph)
-        cfg.KOALA_HOST.SetRecDistCM(self.focus)
-        cfg.KOALA_HOST.OnDistanceChange()
-        ph = cfg.KOALA_HOST.GetPhase32fImage()
-        tifffile.imwrite(r'F:/test_images/focused_unflattened'+os.sep+test_image_name,ph)
-        ph = self._subtract_plane_recon_rectangle(ph)
-        tifffile.imwrite(r'F:/test_images/focused_flattened'+os.sep+test_image_name,ph)
+        if not self.corrupted:
+            test_image_name = str(self.fname).replace("\\", "_")[3:]
+            cfg.KOALA_HOST.SetRecDistCM(cfg.reconstruction_distance_guess)
+            cfg.KOALA_HOST.OnDistanceChange()
+            ph = cfg.KOALA_HOST.GetPhase32fImage()
+            tifffile.imwrite(r'F:/test_images/unfocused_unflattened'+os.sep+test_image_name,ph)
+            ph = self._subtract_plane_recon_rectangle(ph)
+            tifffile.imwrite(r'F:/test_images/unfocused_flattened'+os.sep+test_image_name,ph)
+            cfg.KOALA_HOST.SetRecDistCM(self.focus)
+            cfg.KOALA_HOST.OnDistanceChange()
+            ph = cfg.KOALA_HOST.GetPhase32fImage()
+            tifffile.imwrite(r'F:/test_images/focused_unflattened'+os.sep+test_image_name,ph)
+            ph = self._subtract_plane_recon_rectangle(ph)
+            tifffile.imwrite(r'F:/test_images/focused_flattened'+os.sep+test_image_name,ph)
         #################  end save test images block   #################
         
     def _check_corrupted(self):
