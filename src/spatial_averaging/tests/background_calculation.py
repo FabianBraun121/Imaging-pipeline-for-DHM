@@ -76,7 +76,7 @@ def cplx_avg(images_in, background):
 #%%
 images = np.load(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\background_calculation\images.npy')
 #%%
-bg = np.mean(np.array([np.angle(median_background(images[i])) for i in range(8)]), axis=0)
+bg = np.mean(np.array([np.angle(median_background(images[i])) for i in range(10)]), axis=0)
 #%%
 i = 8
 plt.figure('different backgrounds')
@@ -98,5 +98,14 @@ cd = np.hstack((np.angle(c),np.angle(d)))
 plt.imshow(np.vstack((ab,cd)))
 
 #%%
-plt.figure('a')
-plt.imshow(np.angle(median_background(images[1]))-np.angle(median_background(images[0])))
+plt.figure('difference in background')
+plt.imshow((np.angle(median_background(images[15]))-bg)*100)
+
+#%%
+import scipy
+
+std_difference = 0
+for i in range(10):
+    std_difference += np.std(np.angle(median_background(images[10+i]))-bg)
+std_difference /= 20
+print(f'The mean background difference is {std_difference/np.std(bg)} of the full background')

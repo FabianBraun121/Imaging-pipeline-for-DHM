@@ -16,9 +16,11 @@ import subprocess
 import time
 import pyautogui
 import cv2
+import psutil
 from PyQt5.QtWidgets import QFileDialog
 
-from . import config as cfg
+sys.path.append("..")
+import config as cfg
 
 
 def connect_to_remote_koala(ConfigNumber):
@@ -41,45 +43,34 @@ def crop_image(image_array, crop_coords):
     ymin, ymax = crop_coords[0][0], crop_coords[0][1]
     xmin, xmax = crop_coords[1][0], crop_coords[1][1]
     
-    if xmin < xmax and ymin < ymax:
-        return image_array[ymin:ymax, xmin:xmax]
-    else:
-        # Handle the x-direction
-        if xmin < xmax:
-            cropped_left_right = image_array[:, xmin:xmax]
-        else:
-            cropped_left = image_array[:, xmin:]
-            cropped_right = image_array[:, :xmax+1]
-            cropped_left_right = np.concatenate((cropped_left, cropped_right), axis=1)
-        
-        # Handle the y-direction
-        if ymin < ymax:
-            cropped_image = cropped_left_right[ymin:ymax, :]
-        else:
-            cropped_top = cropped_left_right[:ymax+1, :]
-            cropped_bottom = cropped_left_right[ymin:, :]
-            cropped_image = np.concatenate((cropped_top, cropped_bottom), axis=0)
-        
-        # Return the cropped image
-        return cropped_image
+    return image_array[ymin:ymax, xmin:xmax]
 
 def Open_Directory(directory, message):
-    #print(directory)
     fname = QFileDialog.getExistingDirectory(None, message, directory, QFileDialog.ShowDirsOnly)
-#    if python_vers == "3.x":
-#        fname = fname[0]
     return fname
 
 def get_result_unwrap(phase, mask=None):
         ph_m = ma.array(phase, mask=mask)
         return np.array(skir.unwrap_phase(ph_m))
     
+def get_masks_corners(mask):
+    non_zero_indices = np.nonzero(mask)
+    ymin, ymax = int(np.min(non_zero_indices[0])), int(np.max(non_zero_indices[0])+1)
+    xmin, xmax = int(np.min(non_zero_indices[1])), int(np.max(non_zero_indices[1])+1)
+    return ((ymin, ymax), (xmin, xmax))
+
+def is_koala_running():
+    for proc in psutil.process_iter(['name', 'exe']):
+        if proc.info['name'] == 'Koala.exe' and proc.info['exe'] == r'C:\Program Files\LynceeTec\Koala\Koala.exe':
+            return True
+    return False
+    
 def logout_login_koala():
     cfg.KOALA_HOST.Logout()
     time.sleep(0.1)
     cfg.KOALA_HOST.Connect('localhost')
     cfg.KOALA_HOST.Login('admin')
-    cfg.KOALA_HOST.OpenConfig(cfg.KOALA_CONFIG_NR)
+    cfg.KOALA_HOST.OpenConfig(cfg.koala_config_nr)
     cfg.KOALA_HOST.OpenPhaseWin()
     cfg.KOALA_HOST.OpenIntensityWin()
     cfg.KOALA_HOST.OpenHoloWin()
@@ -131,4 +122,23 @@ def shut_down_restart_koala():
     cfg.KOALA_HOST.KoalaShutDown()
     time.sleep(1)
     open_koala()
-    cfg.KOALA_HOST = connect_to_remote_koala(cfg.KOALA_CONFIG_NR)
+    cfg.KOALA_HOST = connect_to_remote_koala(cfg.koala_config_nr)
+    
+def start_koala():
+    # Open Koala and load Configurations
+    if not is_koala_running():
+        open_koala()
+    
+    try:
+        cfg.KOALA_HOST.OpenPhaseWin()
+    except:
+        cfg.KOALA_HOST = None
+    if cfg.KOALA_HOST is None:
+        cfg.KOALA_HOST = client.pyKoalaRemoteClient()
+        cfg.KOALA_HOST.Connect('localhost')
+        cfg.KOALA_HOST.Login('admin')
+    
+    cfg.KOALA_HOST.OpenConfig(cfg.koala_config_nr)
+    cfg.KOALA_HOST.OpenPhaseWin()
+    cfg.KOALA_HOST.OpenIntensityWin()
+    cfg.KOALA_HOST.OpenHoloWin()
