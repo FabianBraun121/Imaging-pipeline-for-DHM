@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tifffile
 from skimage.morphology import binary_dilation
+from skimage.registration import phase_cross_correlation
 import json
 import cv2
 
@@ -59,10 +60,12 @@ for e in range(len(experiment_names)):
                 
                 mean_bac.append(np.mean(image_unfocused_flattened[mask])*794/(2*np.pi))
                 points_bac.append(len(mask[mask==True]))
-
+        print(f'start {i}')
+# mean(mae_unflattend) = 437.5763142363454 (348.1224687131989), mean(mae_flattend) = 6.555890270638546 (0.6622838564051792)
 #%%
 ######################## flatten image ######################
-filename = 'F3_20230406_2023-04-06 11-07-24_00002_00003_00002_Holograms_00050_holo.tif'
+filename = 'F3_20230406_2023-04-06 11-07-24_00001_00001_00001_Holograms_00050_holo.tif'
+
 image_uu = tifffile.imread(base_dir + os.sep + 'unfocused_unflattened' + os.sep + filename)*794/(2*np.pi)
 image_uf = tifffile.imread(base_dir + os.sep + 'unfocused_flattened' + os.sep + filename)*794/(2*np.pi)
 plot_dif(image_uu, image_uf)
@@ -70,8 +73,8 @@ plot_dif(image_uu, image_uf)
 #%%
 ######################## focus point numerical analysis #######################
 focus_offsets = []
-mean_difs = []
-std_difs = []
+difs_bacteria = []
+mea_difs_pixels = []
 mean_bac = []
 points_bac = []
 data_file_dir = r'F:\test_images\data_files'
@@ -102,10 +105,12 @@ for e in range(len(experiment_names)):
                 image_focused_flattened = tifffile.imread(base_dir + os.sep + 'focused_flattened' + os.sep + filename)
                 dif = (image_focused_flattened-image_unfocused_flattened)[mask]*794/(2*np.pi)
                 points_bac.append(len(dif))
-                std_difs.append(np.std(dif))
-                mean_difs.append(np.mean(dif))
-                mean_bac.append(np.mean(image_focused_flattened[mask]))
+                mea_difs_pixels.append(np.mean(np.abs(dif)))
+                difs_bacteria.append(np.mean(dif))
+                mean_bac.append(np.mean(image_focused_flattened[mask])*794/(2*np.pi))
         print(f'position {i} done')
+# np.mean(np.abs(focus_offsets)) = 0.06565876676394965 (0.06526685939550575), np.mean(np.abs(difs_bacteria)) = 0.3241210041515854 ( 0.782255995976346)
+# np.mean(mea_difs_pixels) = 1.9647389743949002 (1.7299677011264283), np.mean(mean_bac) = 26.92346201646424 (3.354683722592203)
 #%%
 ######################## focus point image ######################
 # Extreme example of focus offset
@@ -145,9 +150,11 @@ for e in range(len(experiment_names)):
                 
                 mean_bac.append(np.mean(image_without_background[mask])*794/(2*np.pi))
                 points_bac.append(len(mask[mask==True]))
+# np.mean(mae_ff) = 6.555953083727898 (0.6619066701507784), np.mean(mae_wb) = 4.890570396629716 (0.7166991405623114)
+
 #%%
 ######################## background image ######################
-filename = 'F3_20230406_2023-04-06 11-07-24_00007_00003_00003_Holograms_00000_holo.tif'
+filename = 'F3_20230406_2023-04-06 11-07-24_00001_00001_00001_Holograms_00050_holo.tif'
 
 image_without_background = tifffile.imread(base_dir + os.sep + 'without_background' + os.sep + filename)*794/(2*np.pi)
 image_ff = tifffile.imread(base_dir + os.sep + 'focused_flattened' + os.sep + filename)*794/(2*np.pi)
@@ -155,8 +162,8 @@ plot_dif(image_ff, image_without_background, cbar_title_dist=-105)
 
 #%%
 ######################## averaging numerical analysis #######################
-mean_difs = []
-mae_difs = []
+mae_wb_a = []
+mae_a = []
 mean_bac = []
 points_bac = []
 data_file_dir = r'F:\test_images\data_files'
@@ -179,21 +186,56 @@ for e in range(len(experiment_names)):
             image_averaged = tifffile.imread(base_dir + os.sep + 'averaged' + os.sep + filename_averaged)
             mask = image_averaged>0.25
             mask = binary_dilation(binary_dilation(binary_dilation(mask)))
+            avg = image_averaged[~mask]
             
-            image_wb = tifffile.imread(base_dir + os.sep + 'without_background' + os.sep + filename_unaveraged)[10:710,90:790]
-
-            dif = (image_averaged-image_wb)[mask]*794/(2*np.pi)
-            points_bac.append(len(dif))
-            mae_difs.append(np.mean(np.abs(dif)))
-            mean_difs.append(np.mean(dif))
-            mean_bac.append(np.mean(image_averaged[mask])*794/(2*np.pi))
+            image_without_background = tifffile.imread(base_dir + os.sep + 'without_background' + os.sep + filename_unaveraged)
+            shift_measured, error, diffphase = phase_cross_correlation(image_without_background[:700,:700], image_averaged)
+            if shift_measured[1]>100 or shift_measured[0]<0:
+                continue
+            image_without_background = image_without_background[int(shift_measured[0]):int(shift_measured[0])+700, int(shift_measured[1]):int(shift_measured[1])+700]
+            wb = image_without_background[~mask]
+            
+            mae_wb_a.append(np.mean(np.abs(wb-np.zeros_like(wb)))*794/(2*np.pi))
+            mae_a.append(np.mean(np.abs(avg-np.zeros_like(avg)))*794/(2*np.pi))
+            
+            mean_bac.append(np.mean(image_without_background[mask])*794/(2*np.pi))
+            points_bac.append(len(mask[mask==True]))
         print(f'position {i} done')
-
+# np.mean(mae_wb_a) = 5.062496793793493 (0.5678454313757011), np.mean(mae_a) = 3.441808529258636 (0.5794835287190342)
 #%%
 ######################## background image ######################
-filename_unaveraged = 'F3_20230406_2023-04-06 11-07-24_00001_00001_00001_Holograms_00075_holo.tif'
-filename_averaged = 'F3_20230406_2023-04-06 11-07-24_00001_00005_00005_Holograms_00075_holo.tif'
+filename_unaveraged = 'F3_20230406_2023-04-06 11-07-24_00001_00001_00001_Holograms_00050_holo.tif'
+filename_averaged = 'F3_20230406_2023-04-06 11-07-24_00001_00005_00005_Holograms_00050_holo.tif'
 
-image_without_background = tifffile.imread(base_dir + os.sep + 'without_background' + os.sep + filename_unaveraged)[10:710,90:790]*794/(2*np.pi)
+image_without_background = tifffile.imread(base_dir + os.sep + 'without_background' + os.sep + filename_unaveraged)*794/(2*np.pi)
 image_averaged = tifffile.imread(base_dir + os.sep + 'averaged' + os.sep + filename_averaged)*794/(2*np.pi)
+shift_measured, error, diffphase = phase_cross_correlation(image_without_background[:700,:700], image_averaged)
+image_without_background = image_without_background[int(shift_measured[0]):int(shift_measured[0])+700, int(shift_measured[1]):int(shift_measured[1])+700]
 plot_dif(image_without_background, image_averaged, cbar_title_dist=-105)
+
+#%%
+
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Data
+labels = ['Unprocessed', 'Plane\n subtracted', 'Focused', 'Background\n subtracted', 'Averaged']
+mae_values = [439.5410532107403, 8.520692058122798, 6.555953083727898, 4.890570396629716, 3.441808529258636]
+std_values = [348.12676715705027, 1.852271223911539, 0.6619066701507784, 0.7166991405623114, 0.5794835287190342]
+
+# Create bar chart
+x_pos = np.arange(len(labels))
+plt.bar(x_pos, mae_values, yerr=std_values, align='center', alpha=0.7, capsize=10, color='blue')
+
+# Set y-axis to be logarithmic
+plt.yscale('log')
+
+plt.yticks([1, 10, 100, 1000], fontsize=14)
+# Add labels and title
+plt.xticks(x_pos, labels, rotation=10, fontsize=14)
+plt.ylabel('Mean absolute error (nm)', fontsize=14)
+# plt.title('Decrease in Noise Level Across Processing Steps')
+
+# Display the plot
+plt.tight_layout()
+plt.show()

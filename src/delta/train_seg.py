@@ -7,6 +7,7 @@ import os
 
 import sys
 from pathlib import Path
+import pickle
 
 from tensorflow.keras.callbacks import ModelCheckpoint, EarlyStopping
 
@@ -25,14 +26,17 @@ assets_path = dhm_cfg.delta_assets_path
 # Files:
 training_set = Path(assets_path, 'trainingsets', '2D', 'training', 'segmentation_set')
 validation_set = Path(assets_path, 'trainingsets', '2D', 'validation', 'segmentation_set')
-savefile = Path(assets_path, 'models', 'unet_pads_seg.hdf5')
+base_unet_path = Path(assets_path, 'models', 'unet_pads_seg.hdf5')
+save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\delta\train_segmentation'
+save_unet = save_path + os.sep + 'unet_pads_seg.hdf5'
+save_history = save_path + os.sep + 'noise_0.06_blur_2_ed_sigma_50.pkl'
 
 # Training parameters:
 batch_size = 1
-epochs = 300
-steps_per_epoch = 1000
+epochs = 10000
+steps_per_epoch = 10
 validation_steps = 50
-patience = 50
+patience = 100
 
 # Data generator parameters:
 train_data_gen_args = dict(
@@ -42,9 +46,9 @@ train_data_gen_args = dict(
     horizontal_flip=True,
     vertical_flip=True,
     illumination_voodoo=True,
-    gaussian_noise=0.003,
-    gaussian_blur=0.1,
-    # elastic_deformation={'sigma': 50, 'points': 3},
+    gaussian_noise=0.06,
+    gaussian_blur=2,
+    elastic_deformation={'sigma': 50, 'points': 3},
 )
 
 
@@ -69,12 +73,12 @@ myGene_val = trainGenerator_seg(
 )
 
 # Define model:
-model = unet_seg(pretrained_weights=savefile, input_size=delta_cfg.target_size_seg + (1,))
+model = unet_seg(pretrained_weights=base_unet_path, input_size=delta_cfg.target_size_seg + (1,))
 model.summary()
 
 # Callbacks:
 model_checkpoint = ModelCheckpoint(
-    savefile, monitor="val_loss", verbose=2, save_best_only=True
+    save_unet, monitor="val_loss", verbose=2, save_best_only=True
 )
 early_stopping = EarlyStopping(monitor="val_loss", mode="min", verbose=2, patience=patience)
 
@@ -88,3 +92,5 @@ history = model.fit(
     callbacks=[model_checkpoint, early_stopping],
 )
 
+with open(save_history, 'wb') as file_pi:
+    pickle.dump(history.history, file_pi)
