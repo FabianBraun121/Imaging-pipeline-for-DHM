@@ -642,6 +642,7 @@ class Pipeline:
         
         data = {
             "settings": {
+                "base_dir": self.base_dir,
                 "koala_configuration": cfg.koala_config_nr,
                 "focus_method": cfg.focus_method,
                 "optimizing_method": cfg.optimizing_method,
