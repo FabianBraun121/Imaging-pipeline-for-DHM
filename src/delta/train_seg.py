@@ -33,10 +33,10 @@ save_history = save_path + os.sep + 'noise_0.06_blur_2_ed_sigma_50.pkl'
 
 # Training parameters:
 batch_size = 1
-epochs = 10000
-steps_per_epoch = 10
-validation_steps = 50
-patience = 100
+epochs = 1000
+steps_per_epoch = 50
+validation_steps = 300
+patience = 200
 
 # Data generator parameters:
 train_data_gen_args = dict(
@@ -94,3 +94,4 @@ history = model.fit(
 
 with open(save_history, 'wb') as file_pi:
     pickle.dump(history.history, file_pi)
+

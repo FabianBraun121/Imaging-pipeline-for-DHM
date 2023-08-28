@@ -28,3 +28,5 @@ for i in range(start, start+9):
     image_series_list.append(get_cell_cycle_frames(cell_cycles[i], img_stack))
     values_list.append(cell_cycles[i]['mass'])
 display_image_series(image_series_list, values_list)
+
+#%%
