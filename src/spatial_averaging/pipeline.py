@@ -391,11 +391,11 @@ class SpatialPhaseAveraging:
         spatial_avg = self.holograms[0].get_cplx_image()
         spatial_avg /= self.background
         place0_roi = self.placements[0].get_place_image_roi()
+        place0_recon_corners = self.placements[0].get_place_recon_corners()
         for i in range(1, self.num_place):
             cplx_image = self.holograms[i].get_cplx_image()
             cplx_image /= self.background
-            place_roi = self.placements[i].get_place_image_roi()
-            cplx_image, shift_vector = self._shift_image(spatial_avg, cplx_image, place0_roi)
+            cplx_image, shift_vector = self._shift_image(spatial_avg, cplx_image, place0_recon_corners)
             self.placements[i].set_shift_vector(shift_vector)
             cplx_image = self._subtract_phase_offset(spatial_avg, cplx_image, place0_roi)
             spatial_avg += cplx_image
@@ -420,14 +420,13 @@ class SpatialPhaseAveraging:
     def get_spatial_avg(self) -> CplxImage:
         return self.spatial_avg.copy()
     
-    def _shift_image(self, reference_image: CplxImage, moving_image: CplxImage, ref_mask: Mask) -> (CplxImage, Tuple[int]):
-        ref_corners = get_masks_corners(ref_mask)
-        ref = np.angle(reference_image[ref_corners[0][0]:ref_corners[0][1], ref_corners[1][0]:ref_corners[1][1]])
-        mov = np.angle(moving_image[ref_corners[0][0]:ref_corners[0][1], ref_corners[1][0]:ref_corners[1][1]])
+    def _shift_image(self, reference_image: CplxImage, moving_image: CplxImage, corners: Tuple[int]) -> (CplxImage, Tuple[int]):
+        ref = np.angle(reference_image[corners[0][0]:corners[0][1], corners[1][0]:corners[1][1]])
+        mov = np.angle(moving_image[corners[0][0]:corners[0][1], corners[1][0]:corners[1][1]])
         try: # from scikit-image version 0.19.1 they added normalization. base configuration is 'phase', but None works better
-            shift_measured, error, diffphase = phase_cross_correlation(ref, mov, upsample_factor=10, normalization=None)
+            shift_measured = phase_cross_correlation(ref, mov, upsample_factor=10, normalization=None, return_error=False)
         except TypeError: # Invalid argument normalization
-            shift_measured, error, diffphase = phase_cross_correlation(ref, mov, upsample_factor=10)
+            shift_measured = phase_cross_correlation(ref, mov, upsample_factor=10, return_error=False)
         shift_vector = (shift_measured[0], shift_measured[1])
         #interpolation to apply the computed shift (has to be performed on float array)
         real = ndimage.shift(np.real(moving_image), shift=shift_vector, mode='constant')
@@ -528,12 +527,14 @@ class Pipeline:
                 averaged_phase_image = get_result_unwrap(np.angle(spa.get_spatial_avg())).astype(np.float32)
                 if last_phase_image is not None:
                     averaged_phase_image = self._temporal_shift_correction(last_phase_image, averaged_phase_image)
-                phase_image =  averaged_phase_image[cfg.image_cut[0][0]:cfg.image_cut[0][1],cfg.image_cut[1][0]:cfg.image_cut[1][1]]
                 
                 if not self.image_settings_updated:
                     cfg.set_image_variables((cfg.KOALA_HOST.GetPhaseWidth(),cfg.KOALA_HOST.GetPhaseHeight()), cfg.KOALA_HOST.GetPxSizeUm()*1e-6, cfg.KOALA_HOST.GetLambdaNm(0)*1e-9)
+                    self._update_image_cut(spa)
                     self.data_file_path = self._write_data_file()
                     self.image_settings_updated = True
+                
+                phase_image =  averaged_phase_image[cfg.image_cut[0][0]:cfg.image_cut[0][1],cfg.image_cut[1][0]:cfg.image_cut[1][1]]
                 
                 save_pos_folder = str(self.saving_dir) + os.sep + po.pos_name
                 if not os.path.exists(save_pos_folder):
@@ -602,9 +603,9 @@ class Pipeline:
             
     def _temporal_shift_correction(self, reference_image: Image, moving_image: Image) -> Image:
         try: # from scikit-image version 0.19.1 they added normalization. base configuration is 'phase', but None works better
-            shift_measured, error, diffphase = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, normalization=None)
+            shift_measured = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, normalization=None, return_error=False)
         except TypeError: # Invalid argument normalization
-            shift_measured, error, diffphase = phase_cross_correlation(reference_image, moving_image, upsample_factor=10)
+            shift_measured = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, return_error=False)
         shift_vector = (shift_measured[0],shift_measured[1])
         return ndimage.shift(moving_image, shift=shift_vector, mode='constant')
         
@@ -631,10 +632,20 @@ class Pipeline:
             "time": time,
             "foci": tuple(holo.focus for holo in spa.holograms),
             "function_evaluations": int(np.sum([holo.nfev for holo in spa.holograms])),
+            "shift_x": tuple(int(placement.get_shift_vector()[1]) for placement in spa.placements),
+            "shift_y": tuple(int(placement.get_shift_vector()[0]) for placement in spa.placements),
         }
         
         with open(self.data_file_path, 'w') as file:
             json.dump(data, file, indent=4)
+    
+    def _update_image_cut(self, spa: SpatialPhaseAveraging):
+        y_shifts = np.array([placement.get_shift_vector()[0] for placement in spa.placements])
+        x_shifts = np.array([placement.get_shift_vector()[1] for placement in spa.placements])
+        y_midpoint = np.mean([np.min(y_shifts), np.max(y_shifts)])
+        x_midpoint = np.mean([np.min(x_shifts), np.max(x_shifts)])
+        image_cut = ((50+int(y_midpoint), 750+int(y_midpoint)), (50+int(x_midpoint), 750+int(x_midpoint)))
+        cfg.set_image_cut(image_cut)
 
     def _write_data_file(self) -> Path:
         current_datetime = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
@@ -642,7 +653,7 @@ class Pipeline:
         
         data = {
             "settings": {
-                "base_dir": self.base_dir,
+                "base_dir": str(self.base_dir),
                 "koala_configuration": cfg.koala_config_nr,
                 "focus_method": cfg.focus_method,
                 "optimizing_method": cfg.optimizing_method,

@@ -57,9 +57,9 @@ px_size: float = 0.12976230680942535*1e-6
 "pixel size of the Koala image in meters. Is updated automatically"
 hconv: float = 794*1e-9/(2*math.pi)
 "Conversion from degree into meters (optical path difference)"
-unit_code : int = 1
+unit_code: int = 1
 "Unit code for koala. (0 -> no unit, 1 -> radians, 2 -> meters)"
-image_cut : Tuple[Tuple[int]] = ((10, 710), (90, 790))
+image_cut: Tuple[Tuple[int]] = ((10, 710), (90, 790))
 "Edges are not useable because of the spatial averaging. Image are cropped"
 save_format: str = ".tif"
 ".tif or .bin. If image is also sent through delta it has to be .tif"
@@ -141,11 +141,15 @@ def load_config(koala_config_nrIn: int, display_always_onIn: bool = None,
     global _LOADED
     _LOADED = True
 
-def set_image_variables(image_size_in: Tuple, px_size_in: float, laser_lambd: float):
+def set_image_variables(image_sizeIn: Tuple, px_sizeIn: float, laser_lambd: float):
     # hconv is hard coded and can not be changed, since Koala uses the wrong hconv
     global image_size
-    image_size = image_size
+    image_size = image_sizeIn
     global px_size
-    px_size = px_size_in
+    px_size = px_sizeIn
     global hconv
     hconv = laser_lambd/(2*math.pi)
+
+def set_image_cut(image_cutIn: Tuple[Tuple[int]]):
+    global image_cut
+    image_cut = image_cutIn
