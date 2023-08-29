@@ -424,9 +424,9 @@ class SpatialPhaseAveraging:
         ref = np.angle(reference_image[corners[0][0]:corners[0][1], corners[1][0]:corners[1][1]])
         mov = np.angle(moving_image[corners[0][0]:corners[0][1], corners[1][0]:corners[1][1]])
         try: # from scikit-image version 0.19.1 they added normalization. base configuration is 'phase', but None works better
-            shift_measured = phase_cross_correlation(ref, mov, upsample_factor=10, normalization=None, return_error=False)
+            shift_measured, _, __ = phase_cross_correlation(ref, mov, upsample_factor=10, normalization=None, return_error='always')
         except TypeError: # Invalid argument normalization
-            shift_measured = phase_cross_correlation(ref, mov, upsample_factor=10, return_error=False)
+            shift_measured, _, __ = phase_cross_correlation(ref, mov, upsample_factor=10, return_error=True)
         shift_vector = (shift_measured[0], shift_measured[1])
         #interpolation to apply the computed shift (has to be performed on float array)
         real = ndimage.shift(np.real(moving_image), shift=shift_vector, mode='constant')
@@ -603,9 +603,9 @@ class Pipeline:
             
     def _temporal_shift_correction(self, reference_image: Image, moving_image: Image) -> Image:
         try: # from scikit-image version 0.19.1 they added normalization. base configuration is 'phase', but None works better
-            shift_measured = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, normalization=None, return_error=False)
+            shift_measured, _, __ = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, normalization=None, return_error='always')
         except TypeError: # Invalid argument normalization
-            shift_measured = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, return_error=False)
+            shift_measured, _, __ = phase_cross_correlation(reference_image, moving_image, upsample_factor=10, return_error=True)
         shift_vector = (shift_measured[0],shift_measured[1])
         return ndimage.shift(moving_image, shift=shift_vector, mode='constant')
         
