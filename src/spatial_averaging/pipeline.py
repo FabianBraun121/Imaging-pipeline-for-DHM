@@ -423,6 +423,9 @@ class SpatialPhaseAveraging:
     def _shift_image(self, reference_image: CplxImage, moving_image: CplxImage, corners: Tuple[int]) -> (CplxImage, Tuple[int]):
         ref = np.angle(reference_image[corners[0][0]:corners[0][1], corners[1][0]:corners[1][1]])
         mov = np.angle(moving_image[corners[0][0]:corners[0][1], corners[1][0]:corners[1][1]])
+        # increase in importance to the higher areas (bacteria)
+        ref = np.exp(5*ref)
+        mov = np.exp(5*mov)
         try: # from scikit-image version 0.19.1 they added normalization. base configuration is 'phase', but None works better
             shift_measured, _, __ = phase_cross_correlation(ref, mov, upsample_factor=10, normalization=None, return_error='always')
         except TypeError: # Invalid argument normalization

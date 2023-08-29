@@ -12,9 +12,9 @@ import spatial_averaging as sa
 import config
 
 koala_config_nr = 263
-restrict_positions = None   # slice
+restrict_positions = slice(0,1)   # slice
 restrict_timesteps = None #range(0, 100, 25) # range
-select_recon_rectangle = True
+select_recon_rectangle = False
 select_image_roi = False
 # base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
 base_dir = r'F:/20230824-1119'
@@ -24,7 +24,7 @@ config.load_config(koala_config_nrIn=koala_config_nr, save_formatIn='.bin')
 pipe = sa.pipeline.Pipeline(base_dir=base_dir, restrict_positions=restrict_positions,
                             restrict_timesteps=restrict_timesteps)
 if select_recon_rectangle:
-    pipe.select_positions_recon_rectangle(same_for_all_pos = True)
+    pipe.select_positions_recon_rectangle(same_for_all_pos = False)
 if select_image_roi:
     pipe.select_positions_image_roi(same_for_all_pos = False)
 pipe.process()
