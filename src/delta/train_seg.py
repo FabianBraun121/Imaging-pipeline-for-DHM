@@ -45,7 +45,7 @@ train_data_gen_args = dict(
     zoom=0.15,
     horizontal_flip=True,
     vertical_flip=True,
-    illumination_voodoo=True,
+    illumination_voodoo=False,
     gaussian_noise=0.06,
     gaussian_blur=2,
     elastic_deformation={'sigma': 50, 'points': 3},
@@ -92,6 +92,6 @@ history = model.fit(
     callbacks=[model_checkpoint, early_stopping],
 )
 
-with open(save_history, 'wb') as file_pi:
-    pickle.dump(history.history, file_pi)
+# with open(save_history, 'wb') as file_pi:
+#     pickle.dump(history.history, file_pi)
 

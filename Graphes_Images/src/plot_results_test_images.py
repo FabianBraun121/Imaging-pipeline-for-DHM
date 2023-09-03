@@ -69,7 +69,6 @@ def plot_images_and_difference(image1, image2):
     plt.show()
 
 
-
 #%%
 ######################## flatten numerical analysis #######################
 mae_unflattend = []

@@ -15,7 +15,7 @@ import pandas as pd
 
 def create_seg_weight_and_eroded_objectId(img):
     core_layer_size = 3
-    min_weight = int(0.01 * 255)
+    min_weight = int(0.1 * 255)
     core_max_weight = int(1 * 255)
     core_decay = 0.7
     core_size_penalty = 0.003

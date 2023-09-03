@@ -16,29 +16,30 @@ from scipy.optimize import minimize, Bounds
 from scipy import ndimage
 from skimage.registration import phase_cross_correlation
 
-
+#%%
 class LineDrawer:
     def __init__(self, img):
         self.img = img
         self.line = None
         self.points = []
+        self.line_points = []  # Store points on the line
         self.fig, self.ax = plt.subplots()
-        self.cid = self.fig.canvas.mpl_connect('button_press_event', self)
+        self.cid = self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+        self.enter_pressed = False  # Added to track Enter key press
 
-    def __call__(self, event):
+    def on_click(self, event):
         # Check for valid click (within image, left mouse button)
-        if event.inaxes!=self.ax.axes or event.button != 1:
+        if event.inaxes != self.ax or event.button != 1:
             return
         if self.line is None:  # if there is no line, create a line
-            self.line, = self.ax.plot(event.xdata, event.ydata)  # plot the point
-            self.points.append((int(event.xdata), int(event.ydata)))
+            self.line, = self.ax.plot([np.round(event.ydata,0)], [np.round(event.xdata,0)], 'r')  # plot the point
+            self.points.append((int(np.round(event.ydata,0)), int(np.round(event.xdata,0))))
         else:  # if there is a line, dynamically update the line
-            self.line.set_xdata([self.points[0][0], event.xdata])
-            self.line.set_ydata([self.points[0][1], event.ydata])
-            self.points.append((int(event.xdata), int(event.ydata)))
+            self.line.set_xdata([self.points[-1][1], np.round(event.xdata,0)])
+            self.line.set_ydata([self.points[-1][0], np.round(event.ydata,0)])
+            self.points.append((int(np.round(event.ydata,0)), int(np.round(event.xdata,0))))
             self.fig.canvas.draw()
-            # disconnect the event hook after the second click
-            self.fig.canvas.mpl_disconnect(self.cid)
+
 
     def bresenham_line(self, pt1, pt2):
         """Bresenham's Line Algorithm
@@ -90,22 +91,35 @@ class LineDrawer:
         # Reverse the list if the coordinates were swapped
         if swapped:
             points.reverse()
+
         return points
+
+    def wait_for_enter(self):
+        def on_key(event):
+            if event.key == 'enter':
+                self.enter_pressed = True
+
+        self.fig.canvas.mpl_connect('key_press_event', on_key)
+        while not self.enter_pressed:
+            plt.pause(0.1)
+        plt.close()
 
     def show_image_and_draw(self):
         # Display image
         self.ax.imshow(self.img, cmap='gray')
-        while len(self.points) < 2:  # wait for two clicks
-            plt.waitforbuttonpress()
-        plt.close()  # close the figure after 2 clicks
+        plt.show()
 
 def draw_on_image(img):
     line_drawer = LineDrawer(img)
     line_drawer.show_image_and_draw()
+    line_drawer.wait_for_enter()
+
     if len(line_drawer.points) < 2:
         print("Not enough points clicked. Please click two points on the image.")
         return []
-    return line_drawer.bresenham_line(line_drawer.points[0], line_drawer.points[1])
+
+    line_drawer.line_points = line_drawer.bresenham_line(line_drawer.points[-2], line_drawer.points[-1])
+    return line_drawer.line_points
 
 class Hologram:
     def __init__(self, fname):
@@ -370,12 +384,15 @@ plt.ylabel('phase [rad]')
 
 
 
+#%%
+plt.figure(figsize=(4.5,4))
+plt.plot(np.array([images[0][p] for p in points])*794/(2*np.pi), 'r', label='pixel values')
+plt.plot([2,28],[25,25], label='avg. value')
+plt.legend(fontsize=12)
+plt.xlabel('Pixels red line', fontsize=12)
+plt.ylabel('Optical path difference [nm]', fontsize=12)
 
+#%%
+img = images[0]
 
-
-
-
-
-
-
-
+plt.imshow(images[0])
