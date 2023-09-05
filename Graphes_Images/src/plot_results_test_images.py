@@ -271,7 +271,9 @@ std_values = [348.12676715705027, 1.852271223911539, 0.6619066701507784, 0.71669
 
 # Create bar chart
 x_pos = np.arange(len(labels))
-plt.bar(x_pos, mae_values, yerr=std_values, align='center', alpha=0.7, capsize=10, color='blue')
+plt.bar(x_pos, mae_values, yerr=std_values, align='center', alpha=0.7, capsize=10, color='blue', label='Pixel error')
+plt.plot([-0.4,4.4], [25,25], 'r', label="bacteria's mean signal")
+plt.legend(fontsize=14)
 
 # Set y-axis to be logarithmic
 plt.yscale('log')
@@ -279,7 +281,7 @@ plt.yscale('log')
 plt.yticks([1, 10, 100, 1000], fontsize=14)
 # Add labels and title
 plt.xticks(x_pos, labels, rotation=10, fontsize=14)
-plt.ylabel('Mean absolute error (nm)', fontsize=14)
+plt.ylabel('Mean absolute error [nm]', fontsize=14)
 # plt.title('Decrease in Noise Level Across Processing Steps')
 
 # Display the plot

@@ -67,7 +67,7 @@ save_format: str = ".tif"
 koala_reset_frequency: int = 20
 "Koala slows down with time (due to accumulation of memory). Periodic restart is required. If local_grid_search=True frequency 20 is recommended, if False 10."
 
-dilute_cells: int = 4
+dilute_cells: int = 3
 """Some cells are right next to each other and since delta needs space between cells. So during training of delta the outer layer of the cells were eroded to
 create space. So after delta cells need to be diluted again."""
 

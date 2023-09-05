@@ -14,14 +14,14 @@ import pandas as pd
 
 
 def create_seg_weight_and_eroded_objectId(img):
-    core_layer_size = 3
-    min_weight = int(0.1 * 255)
+    core_layer_size = 4
+    min_weight = int(0.15 * 255)
     core_max_weight = int(1 * 255)
     core_decay = 0.7
     core_size_penalty = 0.003
-    border_max_weigth = int(0.3*255)
+    border_max_weigth = int(0.6*255)
     border_decay = 0.7
-    inter_region_max_weight = int(0.6 * 255)
+    inter_region_max_weight = int(1 * 255)
     inter_region_decay = 0.7
     
     seg = np.zeros_like(img, dtype=np.uint8)

@@ -61,7 +61,7 @@ host.OpenHoloWin()
 save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\Graphes_Images\data\focus_distances_run'
 fname_holo = r'F:\C11_20230217\2023-02-17 11-13-34\00001\00001_00001\Holograms\00000_holo.tif'
 #%%
-x = np.zeros(200)
+x = np.zeros(400)
 ph_images = np.zeros((x.shape[0],800,800))
 amp_images = np.zeros((x.shape[0],800,800))
 y_sharpness = np.zeros((x.shape[0]))
@@ -71,7 +71,7 @@ X, pseudoinverse = generate_X_and_pseudoinverse((800,800), 4)
 host.LoadHolo(fname_holo,1)
 host.SetUnwrap2DState(True)
 for i in range(x.shape[0]):
-    xi = -3+i*0.01
+    xi = -3.5+i*0.01
     x[i] = xi
     host.SetRecDistCM(xi)
     host.OnDistanceChange()
@@ -164,7 +164,7 @@ def display_frames_with_plot(amp, ph, x, y_std_amp, y_sharpness):
         fig.canvas.draw()
     
     def endscreen():
-        x_min = np.argmin(y_std_amp)
+        x_min = np.argmin(y_std_amp[:y_std_amp.shape[0]//2])
         # Clear previous images/lines
         ax_amp.cla()
         ax_amp.imshow(amp[x_min], cmap=cmap, norm=amp_norm)
@@ -230,7 +230,7 @@ def display_frames_with_plot(amp, ph, x, y_std_amp, y_sharpness):
     fig.canvas.mpl_connect('close_event', on_close) 
 
     update_display()  # Display the initial frame before animation starts
-    ani = animation.FuncAnimation(fig, automatic_update, interval=100, save_count=len(x)+1)
+    ani = animation.FuncAnimation(fig, automatic_update, interval=40, save_count=len(x)+1)
     plt.show()
     
     # Save animation as a video
