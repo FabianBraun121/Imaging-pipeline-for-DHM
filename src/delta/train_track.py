@@ -31,17 +31,17 @@ savefile = Path(assets_path, 'models', 'unet_pads_track.hdf5')
 # Training parameters:
 batch_size = 2
 epochs = 300
-steps_per_epoch = 1000
+steps_per_epoch = 500
 validation_steps = 300
-patience = 50
+patience = 3
 
 # Data generator parameters:
 train_data_gen_args = dict(
     rotation=1,
     zoom=0.15,
     horizontal_flip=True,
-    histogram_voodoo=True,
-    illumination_voodoo=True,
+    histogram_voodoo=False,
+    illumination_voodoo=False,
 )
 
 # Generator init:
