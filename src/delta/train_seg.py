@@ -28,7 +28,7 @@ training_set = Path(assets_path, 'trainingsets', '2D', 'training', 'segmentation
 validation_set = Path(assets_path, 'trainingsets', '2D', 'validation', 'segmentation_set')
 base_unet_path = Path(assets_path, 'models', 'unet_pads_seg.hdf5')
 save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\delta\train_segmentation'
-save_unet = save_path + os.sep + 'unet_pads_seg.hdf5'
+save_unet = str(Path(assets_path, 'models', 'unet_pads_seg.hdf5'))
 save_history = save_path + os.sep + 'noise_0.06_blur_2_ed_sigma_50.pkl'
 
 # Training parameters:
@@ -36,7 +36,7 @@ batch_size = 1
 epochs = 1000
 steps_per_epoch = 300
 validation_steps = 300
-patience = 100
+patience = 50
 
 # Data generator parameters:
 train_data_gen_args = dict(
