@@ -63,7 +63,7 @@ myGene_train = trainGenerator_track(
 myGene_val = trainGenerator_track(
     batch_size,
     os.path.join(validation_set, "img"),
-    os.path.join(validation_set, "seg"),
+    os.path.join(validation_set, "seg"),    
     os.path.join(validation_set, "previmg"),
     os.path.join(validation_set, "segall"),
     os.path.join(validation_set, "mot_dau"),
