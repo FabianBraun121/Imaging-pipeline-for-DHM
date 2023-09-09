@@ -328,7 +328,6 @@ class Hologram:
     
     def _evaluate_std_ph_sobel(self, gray_image) -> float:
         gray_image = gray_image.clip(min=0)
-        gray_image = cv2.resize(gray_image, (gray_image.shape[0]//2, gray_image.shape[1]//2), interpolation = cv2.INTER_AREA)
         # Calculate gradient magnitude using Sobel filter
         grad_x = ndimage.sobel(gray_image, axis=0)
         grad_y = ndimage.sobel(gray_image, axis=1)

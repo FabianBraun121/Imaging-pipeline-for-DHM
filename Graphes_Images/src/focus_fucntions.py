@@ -13,6 +13,7 @@ from sklearn.preprocessing import PolynomialFeatures
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from mpl_toolkits.mplot3d import Axes3D
+from scipy import ndimage
 import cv2
 from matplotlib.widgets import Slider
 import matplotlib.gridspec as gridspec
@@ -58,6 +59,18 @@ def subtract_plane(field, plane_degree, ignore_region=None):
     
     return field - plane
 
+def generate_X_and_pseudoinverse(field_shape, plane_degree):
+    X1, X2 = np.mgrid[:field_shape[0], :field_shape[1]]
+    X = np.hstack((X1.reshape(-1,1), X2.reshape(-1,1)))
+    X = PolynomialFeatures(degree=plane_degree, include_bias=True).fit_transform(X)
+    pseudoinverse = np.dot( np.linalg.inv(np.dot(X.transpose(), X)), X.transpose())
+    return X, pseudoinverse
+
+def subtract_plane_X_precomputed(X, pseudoinverse, field):
+    theta = np.dot(pseudoinverse, field.reshape(-1))
+    plane = np.dot(X, theta).reshape(field.shape[0], field.shape[1])
+    return field-plane
+
 def plot_image_series(images):
     fig, ax = plt.subplots()
     plt.subplots_adjust(bottom=0.25)
@@ -93,36 +106,46 @@ def plot_image_series(images):
 def unity_based_normalization(data):
     return (data-np.min(data))/(np.max(data)-np.min(data))
 
+def phase_sharpness(gray_image):
+    gray_image = gray_image.clip(min=0)
+    gray_image = cv2.resize(gray_image, (gray_image.shape[0]//2, gray_image.shape[1]//2), interpolation = cv2.INTER_AREA)
+    # Calculate gradient magnitude using Sobel filter
+    grad_x = ndimage.sobel(gray_image, axis=0)
+    grad_y = ndimage.sobel(gray_image, axis=1)
+    # Calculate std squared sobel sharpness score
+    return np.std(grad_x ** 4 + grad_y ** 4)
+
 #%%
 base_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\Graphes_Images'
-holo_path = base_path + os.sep + r'data\focus_functions\2023-04-21 10-03-21\00001_00001\Holograms\00000_holo.tif'
+holo_path = base_path + os.sep + r'data\focus_functions\20230720_EcoliTest\00001_holo.tif'
 save_path = base_path + os.sep + r'Graphes_Images\focus_functions'
 #%%
 focus = -2.3
-ConfigNumber = 240
+ConfigNumber = 247
 host = connect_to_remote_koala(ConfigNumber)
 #%%
 host.LoadHolo(holo_path,1)
 host.SetUnwrap2DState(True)
-foci = np.linspace(-3.3, -1.3, 200)
-ph_images = np.zeros((len(foci), 100, 100))
-amp_images = np.zeros((len(foci), 100, 100))
+foci = np.linspace(-2.41, -1.01, 200)
+ph_images_full = np.zeros((len(foci), 800, 800))
+amp_images_full = np.zeros((len(foci), 800, 800))
+X, pseudoinverse = generate_X_and_pseudoinverse((800,800), 4)
 for i, focus in enumerate(foci):
     host.SetRecDistCM(focus)
     host.OnDistanceChange()
     ph_image = host.GetPhase32fImage()
     amp_image = host.GetIntensity32fImage()
     
-    ph_image_small = ph_image[93:293,387:587]
-    ph_image_small = subtract_plane(ph_image_small, 3, ignore_region=[[50, 150], [50, 150]])
-    ph_images[i] = ph_image_small[50:150,50:150]
+    ph_image = subtract_plane_X_precomputed(X, pseudoinverse, ph_image)
+    ph_images_full[i] = ph_image
     
-    amp_image_small = amp_image[93:293,387:587]
-    # amp_image_small = subtract_plane(amp_image_small, 3, ignore_region=[[50, 150], [50, 150]])
-    amp_images[i] = amp_image_small[50:150,50:150]
+    amp_image = subtract_plane_X_precomputed(X, pseudoinverse, amp_image)
+    amp_images_full[i] = amp_image
     
+ph_images = ph_images_full[:,435:585, 410:560]
+amp_images = amp_images_full[:,435:585, 410:560]
 #%%
-plot_image_series(ph_images)
+plot_image_series(amp_images)
 
 #%%
 
@@ -177,12 +200,12 @@ plt.show()
 #%%
 
 # five images (columns)
-fig = plt.figure(figsize=(11.86,5.7))
-gs = gridspec.GridSpec(5, 6, height_ratios=[1, 1, 0.05, 1,0.2], width_ratios=[1, 1, 1, 1, 1, 0.1], wspace=0.01, hspace=0.01, top=0.95, bottom=0.05, left=0.17, right=0.845)
+fig = plt.figure(figsize=(11.86,5.7), dpi=200)
+gs = gridspec.GridSpec(5, 6, height_ratios=[1, 1, 0.05, 1,0.2], width_ratios=[1, 1, 1, 1, 1, 0.0], wspace=0.01, hspace=0.01, top=0.95, bottom=0.05, left=0.17, right=0.845)
 
-amp = [amp_images[0], amp_images[amp_images.shape[0]//4], amp_images[amp_images.shape[0]//2], amp_images[amp_images.shape[0]//4*3], amp_images[-1]]
-ph = [ph_images[0], ph_images[ph_images.shape[0]//4], ph_images[ph_images.shape[0]//2], ph_images[ph_images.shape[0]//4*3], ph_images[-1]]
-d = [foci[0], foci[foci.shape[0]//4], foci[foci.shape[0]//2], foci[foci.shape[0]//4*3], foci[-1]]
+amp = [amp_images[amp_images.shape[0]//10], amp_images[3*amp_images.shape[0]//10], amp_images[5*amp_images.shape[0]//10], amp_images[7*amp_images.shape[0]//10], amp_images[9*amp_images.shape[0]//10]]
+ph = [ph_images[ph_images.shape[0]//10], ph_images[3*ph_images.shape[0]//10], ph_images[5*ph_images.shape[0]//10], ph_images[7*ph_images.shape[0]//10], ph_images[9*ph_images.shape[0]//10]]
+d = [foci[foci.shape[0]//10], foci[3*foci.shape[0]//10], foci[5*foci.shape[0]//10], foci[7*foci.shape[0]//10], foci[9*foci.shape[0]//10]]
 
 for i in range(0, 5):
     f_ax1 = fig.add_subplot(gs[0, i])
@@ -201,26 +224,28 @@ for i in range(0, 5):
         f_ax1.set_ylabel('amplitude', fontsize=12)
         f_ax2.set_ylabel('phase', fontsize=12)
 
-# Add colorbars on the right side
-cbar_ax1 = fig.add_subplot(gs[0, -1])
-fig.colorbar(im1, cax=cbar_ax1)
+# # Add colorbars on the right side
+# cbar_ax1 = fig.add_subplot(gs[0, -1])
+# fig.colorbar(im1, cax=cbar_ax1)
 
-cbar_ax2 = fig.add_subplot(gs[1, -1])
-fig.colorbar(im2, cax=cbar_ax2)
+# cbar_ax2 = fig.add_subplot(gs[1, -1])
+# fig.colorbar(im2, cax=cbar_ax2)
 
 
 # Add the plots to the third row
 ax3 = fig.add_subplot(gs[3, :])
 std_amp = np.std(amp_images, axis=(1,2))
-std_ph = np.std(ph_images, axis=(1,2))
-combined = -np.std(ph_images, axis=(1,2))/np.std(amp_images, axis=(1,2))
+ph_sharpness = np.array([phase_sharpness(ph_images[i]) for i in range(ph_images.shape[0])])
 ax3.plot(foci, unity_based_normalization(std_amp), 'b', label='std_amp')
 ax3.plot(np.ones(2)*foci[np.argmin(std_amp)], np.array([0,1]), 'b--')
-ax3.plot(foci, unity_based_normalization(std_ph), 'g', label='std_ph')
-ax3.plot(foci, unity_based_normalization(combined), color='orange', label='combined')
-ax3.plot(np.ones(2)*foci[np.argmin(combined)], np.array([0,1]), '--', color='orange')
+ax3.plot(foci, unity_based_normalization(ph_sharpness), 'g', label='ph_sharpness')
+ax3.plot(np.ones(2)*foci[np.argmax(ph_sharpness)], np.array([0,1]), 'g--')
 ax3.set_xlabel('focus distance [cm]', fontsize=12)
-ax3.legend()
+ax3.set_xlim([foci[0],foci[-1]])
+ax3.set_yticklabels([])
+ax3.set_yticks([])
+ax3.set_ylabel('Normalized funct.', fontsize=12, labelpad=-1)
+ax3.legend(fontsize=12)
 
 
 plt.subplots_adjust(wspace=0, hspace=0)  # Adjusts the space between the subplots
