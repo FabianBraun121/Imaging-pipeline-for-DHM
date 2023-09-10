@@ -305,7 +305,10 @@ class SpatialPhaseAveraging:
         self.cplx_avg = self._cplx_avg()
     
     def _shift_image(self, reference_image, moving_image):
-        shift_measured, error, diffphase = phase_cross_correlation(np.angle(reference_image), np.angle(moving_image), upsample_factor=10, normalization=None)
+        try:
+            shift_measured, error, diffphase = phase_cross_correlation(np.angle(reference_image), np.angle(moving_image), upsample_factor=10, normalization=None)
+        except TypeError: # Invalid argument normalization
+            shift_measured, error, diffphase = phase_cross_correlation(np.angle(reference_image), np.angle(moving_image), upsample_factor=10)
         shiftVector = (shift_measured[0],shift_measured[1])
         #interpolation to apply the computed shift (has to be performed on float array)
         real = ndimage.shift(np.real(moving_image), shift=shiftVector, mode='wrap')
@@ -374,12 +377,16 @@ points = [tuple(points[i]) for i in range(points.shape[0])]
 
 #%%
 
-for image in images:
-    line = np.array([image[p[::-1]] for p in points])
-    plt.plot(line, 'b')
-plt.plot(np.array([avg_image[p[::-1]] for p in points]), 'r', label='averaged images')
-plt.xlabel('pixel')
-plt.ylabel('phase [rad]')
+for i, image in enumerate(images):
+    line = np.array([image[p] for p in points])*794/(2*np.pi)
+    if i == 0:
+        plt.plot(line, 'b', label='single images')
+    else:
+        plt.plot(line, 'b')
+plt.plot(np.array([avg_image[p] for p in points])*794/(2*np.pi), 'r', label='averaged image')
+plt.xlabel('Pixels', fontsize=12)
+plt.ylabel('Optical path difference [nm]', fontsize=12, labelpad=-5)
+plt.legend(fontsize=12)
 
 
 

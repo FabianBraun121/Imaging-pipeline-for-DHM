@@ -6,6 +6,7 @@ Created on Fri Aug 25 21:18:28 2023
 """
 import os
 os.chdir(os.path.dirname(__file__))
+os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\delta')
 import delta
 from utilities import get_cell_cycles, get_cell_cycle_frames, display_frames_with_plot, display_image_series
 
@@ -32,7 +33,7 @@ plt.yticks(fontsize=12)
 #%%
 plt.figure()
 for c in cell_cycles[:10]:
-    plt.plot(np.arange(len(c['mass']))*2, c['mass'])
+    plt.plot(np.arange(len(c['mass']))*2, np.array(c['mass'])*1000)
 plt.xlabel('time [min]', fontsize=14)
 plt.ylabel('mass [pg]', fontsize=14)
 plt.xticks(fontsize=12)

@@ -26,8 +26,8 @@ local_grid_search: bool = True
 "repeating grid search, around previous minimum (recommended). If False a scipy.optimize.minimize is used"
 nfevaluations : Tuple[int] = (10, 5, 5, 5, 5)
 "gridsize of nth repeating search"
-focus_method: Tuple[str] = ("std_ph_sobel", "std_amp", "std_amp", "std_amp", "std_amp") # 'std_amp', 'sobel_squared_std', 'combined'
-"functions used to find mimimum. std_ph_sobel recommended to find general location of mimimum, std_amp or combined recommended to find exact minimum."
+focus_method: Tuple[str] = ("phase_sharpness", "std_amp", "std_amp", "std_amp", "std_amp") # 'std_amp', 'phase_sharpness', 'combined'
+"functions used to find mimimum. phase_sharpness recommended to find general location of mimimum, std_amp or combined recommended to find exact minimum."
 "If local_grid_search=False only the first function in focus_method tuple is used to find the minimum"
 nfev_max: int = 200
 "if minimum is found at the edges, an adjacent is used. If minimum is not found until nfev_max funciton evaluations iamge is labeled corrupted -> Message"

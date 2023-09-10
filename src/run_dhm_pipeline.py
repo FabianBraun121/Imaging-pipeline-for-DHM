@@ -16,7 +16,7 @@ restrict_positions = slice(0,1)   # slice
 restrict_timesteps = range(60, 100) #range(0, 100, 25) # range
 select_recon_rectangle = True
 select_image_roi = False
-# base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
+base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
 # base_dir = r'F:\E10_20230216\2023-02-16 12-16-39'
 #%%
 ################# spatial averaging ####################################
