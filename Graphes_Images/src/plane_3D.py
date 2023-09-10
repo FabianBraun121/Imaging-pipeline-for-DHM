@@ -13,6 +13,8 @@ from sklearn.preprocessing import PolynomialFeatures
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import gridspec
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 def connect_to_remote_koala(ConfigNumber):
     # Define KoalaRemoteClient host
@@ -31,7 +33,7 @@ def connect_to_remote_koala(ConfigNumber):
 
 def plot_images_with_colorbar(array_2d_top, array_2d_1, array_2d_2, array_2d_3):
     # Create a figure for holding the plots
-    fig = plt.figure(figsize=(12, 8))
+    fig = plt.figure(figsize=(15, 8))
 
     # create x and y values
     x = np.arange(array_2d_top.shape[1])
@@ -40,38 +42,35 @@ def plot_images_with_colorbar(array_2d_top, array_2d_1, array_2d_2, array_2d_3):
 
     # Top subplot (3D)
     ax_top = fig.add_subplot(2, 3, 2, projection='3d')
-    ax_top.plot_surface(x, y, array_2d_top, cmap='viridis')
+    surf = ax_top.plot_surface(x, y, array_2d_top, cmap='viridis')
     ax_top.set_title('Original phase image', fontsize=20, pad=-50)  # Adjust pad for title position
     ax_top.set_xlabel('X', fontsize=14)
     ax_top.set_ylabel('Y', fontsize=14)
     ax_top.set_zlabel('Z', fontsize=14)
 
-    # First bottom subplot (2D)
-    ax1 = fig.add_subplot(2, 3, 4)
-    im1 = ax1.imshow(array_2d_1, cmap='viridis')
-    ax1.set_title('3rd-degree', fontsize=18)  # Adjust pad for title position
-    plt.colorbar(im1, ax=ax1)
-    ax1.set_xticks([])  # Remove x ticks
-    ax1.set_yticks([])  # Remove y ticks
+    # Function to add colorbars below the subplots
+    def add_colorbar(ax, im, aspect=20, pad_fraction=0.5):
+        divider = ax.inset_axes([0, -0.1, 1, 0.1], transform=ax.transAxes)
+        cbar = plt.colorbar(im, cax=divider, orientation='horizontal', aspect=aspect)
+        cbar.ax.tick_params(labelsize=12)
+        return cbar
 
-    # Second bottom subplot (2D)
-    ax2 = fig.add_subplot(2, 3, 5)
-    im2 = ax2.imshow(array_2d_2, cmap='viridis')
-    ax2.set_title('4th-degree', fontsize=18)  # Adjust pad for title position
-    plt.colorbar(im2, ax=ax2)
-    ax2.set_xticks([])  # Remove x ticks
-    ax2.set_yticks([])  # Remove y ticks
+    # List of arrays and titles for the 2D subplots
+    arrays_2d = [array_2d_1, array_2d_2, array_2d_3]
+    titles = ['3rd-degree', '4th-degree', '6th-degree']
 
-    # Third bottom subplot (2D)
-    ax3 = fig.add_subplot(2, 3, 6)
-    im3 = ax3.imshow(array_2d_3, cmap='viridis')
-    ax3.set_title('6th-degree', fontsize=18)  # Adjust pad for title position
-    plt.colorbar(im3, ax=ax3)
-    ax3.set_xticks([])  # Remove x ticks
-    ax3.set_yticks([])  # Remove y ticks
+    # Create 2D subplots with colorbars below
+    for i, (array_2d, title) in enumerate(zip(arrays_2d, titles)):
+        ax = fig.add_subplot(2, 3, i + 4)
+        im = ax.imshow(array_2d, cmap='viridis')
+        ax.set_title(title, fontsize=18)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        cbar = add_colorbar(ax, im)
+        cbar.set_label('Optical path difference [nm]', fontsize=14)
 
     # Adjust layout to be tight
-    fig.tight_layout()
+    plt.tight_layout()
 
     # Show the figure with the plots
     plt.show()
@@ -109,7 +108,7 @@ def plot_images_without_planes(array_2d_top, array_2d_1, array_2d_2, array_2d_3)
     # Top subplot
     ax_top = fig.add_subplot(2, 3, 2, projection='3d')
     ax_top.plot_surface(x, y, array_2d_top, cmap='viridis')
-    ax_top.set_title('original phase image', pad=-20)
+    ax_top.set_title('original phase image', pad=-100)
     ax_top.set_xlabel('X')
     ax_top.set_ylabel('Y')
     ax_top.set_zlabel('Z')
@@ -172,7 +171,7 @@ host.SetUnwrap2DState(True)
 image = host.GetPhase32fImage()
 np.save(save_path + os.sep + 'image', image)
 #%%
-image = np.load(save_path + os.sep + 'image.npy')
+image = np.load(save_path + os.sep + 'image.npy')*794/(2*np.pi)
 #%%
 plot_3d(subtract_plane(image, 6))
 #%%
