@@ -24,9 +24,9 @@ import numpy as np
 
 plt.figure()
 for c in avg_length_cell_cycles:
-    plt.plot(np.arange(len(c['mass']))*2, c['mass'])
+    plt.plot(np.arange(len(c['mass']))*2, np.array(c['mass'])*1000)
 plt.xlabel('time [min]', fontsize=14)
-plt.ylabel('mass [pg]', fontsize=14)
+plt.ylabel('mass [fg]', fontsize=14)
 plt.xticks(fontsize=12)
 plt.yticks(fontsize=12)
 
@@ -35,6 +35,6 @@ plt.figure()
 for c in cell_cycles[:10]:
     plt.plot(np.arange(len(c['mass']))*2, np.array(c['mass'])*1000)
 plt.xlabel('time [min]', fontsize=14)
-plt.ylabel('mass [pg]', fontsize=14)
+plt.ylabel('mass [fg]', fontsize=14)
 plt.xticks(fontsize=12)
 plt.yticks(fontsize=12) 
