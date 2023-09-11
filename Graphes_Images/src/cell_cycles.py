@@ -5,7 +5,6 @@ Created on Fri Aug 25 21:18:28 2023
 @author: SWW-Bc20
 """
 import os
-os.chdir(os.path.dirname(__file__))
 os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\delta')
 import delta
 from utilities import get_cell_cycles, get_cell_cycle_frames, display_frames_with_plot, display_image_series
