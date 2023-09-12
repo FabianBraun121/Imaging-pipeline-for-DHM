@@ -18,16 +18,37 @@ import config as cfg
 
 
 class Delta_process:
+    """
+        Some small changes and additions are made to the DeLTA pipeline, so it works seemlessly with 
+        phase difference images and the spatial averaging pipeline.
+    """    
     def __init__(
             self,
             base_dir: Union[str, Path],
             saving_dir: Union[str, Path] = None,
             restrict_positions: slice = None,
             ):
-    
+        """
+        Parameters
+        ----------
+        base_dir : Union[str, Path]
+            Directory where the various positions folders with the time-lapse images is.
+        saving_dir : Union[str, Path], optional
+            Directory where the results are saved. The default is None.
+        restrict_positions : slice, optional
+            Restrict the positions processed. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
         self.base_dir: Path = Path(base_dir)
+        "Directory of the various positions folders"
         self.data_file_path: Path = None
+        "Path for a processing data file. Not in use at the moment."
         self.restrict_positions: slice = restrict_positions
+        "Restrict the positions processed"
         self.positions = self._positions()
         if saving_dir is not None:
             self.saving_dir: Path = Path(saving_dir)
@@ -35,6 +56,7 @@ class Delta_process:
             self.saving_dir = None
     
     def _positions(self) -> List[str]:
+        "returns a list of th positions processed."
         positions = [d for d in os.listdir(self.base_dir) if os.path.isdir(Path(self.base_dir,d))]
         if self.restrict_positions is None:
             return positions
@@ -42,6 +64,8 @@ class Delta_process:
             return positions[self.restrict_positions]
         
     def process(self):
+        """processes the positions. First with DeLTA. Then bacteria are enlarged.
+        Mean opl, integrated opl and mass are calculated. Newly calculated data is saved."""
         delta.config.load_config(presets="2D")
         
         for pos_name in self.positions:
@@ -77,11 +101,12 @@ class Delta_process:
                 save_format=pipe.save_format,
             )
             
-            # [os.remove(Path(pipe.resfolder,filename)) for filename in os.listdir(pipe.resfolder) if filename.startswith("Position000000")]
+            [os.remove(Path(pipe.resfolder,filename)) for filename in os.listdir(pipe.resfolder) if filename.startswith("Position000000")]
             
             del pipe
     
     def _dilute_cells(self, labelsIn, n):
+        "dilutes the cells n times"
         labels = labelsIn.copy()
         for i in range(n):
             for cell_label in np.unique(labels):
@@ -96,6 +121,7 @@ class Delta_process:
         return labels
     
     def _dilute_cores_to_cells(self, labelsIn, img, n):
+        "dilutes the core to a cell, first three dilutions are only on high image pixel values. Dilutions after are fixed."
         labels = labelsIn.copy()
         img_cut_off = np.percentile(img, 95)
         for i in range(n):
@@ -114,11 +140,13 @@ class Delta_process:
         return labels
     
     def _rename_from_delta(self, pos_dir):
+        "images in a folder of Delta with the same position are always number 1. Function changes to true position name."
         for old_filename in os.listdir(pos_dir):
             new_filename = re.sub('pos00001', f'pos{pos_dir.name}', old_filename)
             os.rename(Path(pos_dir,old_filename), Path(pos_dir,new_filename))
     
     def _rename_to_delta(self, pos_dir):
+        "change pos name to pos00001"
         for old_filename in os.listdir(pos_dir):
             new_filename = re.sub(r'pos(\d+)', 'pos00001', old_filename)
             os.rename(Path(pos_dir,old_filename), Path(pos_dir,new_filename))

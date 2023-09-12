@@ -143,8 +143,8 @@ pos = delta.pipeline.load_position(r'F:\C11_20230217\2023-02-17 11-13-34 phase a
 cell_cycles, split_fail, growth_steps_fail, growth_abs_fail = get_cell_cycles(pos)
 img_stack = pos.rois[0].img_stack
 #%%
-plt.plot(np.arange(len(split_fail[74]['mass']))*2, np.array(split_fail[74]['mass'])*1000, label='no split')
 plt.plot(np.arange(len(split_fail[69]['mass']))*2, np.array(split_fail[69]['mass'])*1000, label='no mother')
+plt.plot(np.arange(len(split_fail[74]['mass']))*2, np.array(split_fail[74]['mass'])*1000, label='no split')
 plt.plot(np.arange(len(growth_steps_fail[4]['mass']))*2, np.array(growth_steps_fail[4]['mass'])*1000, label='impossible growth step')
 plt.plot(np.arange(len(growth_abs_fail[2]['mass']))*2, np.array(growth_abs_fail[2]['mass'])*1000, label='Insufficient absolute growth')
 plt.legend(fontsize=12)
@@ -176,9 +176,119 @@ def plot_valid_cycles(cell_cycles, img_stack):
     plt.tight_layout()
     plt.show()
 
-plot_valid_cycles(cell_cycles[2:5], img_stack)
+plot_valid_cycles(cell_cycles[2:7], img_stack)
 
 #%%
 
 cycle_frames = get_cell_cycle_frames(cell_cycles[1], img_stack)
 frames = np.take(cycle_frames, [0,1,len(cycle_frames)//2,-2,-1], axis=0)
+
+#%%
+import matplotlib.gridspec as gridspec
+
+def plot_valid_cycles(cell_cycles, img_stack):
+    num_cycles = len(cell_cycles)
+    num_frames = 5  # Number of frames to display
+
+    # Create a figure with equidistant grid spacing
+    fig = plt.figure(figsize=(15, 2.5 * num_cycles))
+    gs = gridspec.GridSpec(num_cycles, num_frames + 1, width_ratios=[1] * num_frames + [1])
+
+    for i, cycle_data in enumerate(cell_cycles):
+        # Get the cycle frames
+        cycle_frames = get_cell_cycle_frames(cycle_data, img_stack)
+        frames = np.take(cycle_frames, [0, 1, len(cycle_frames) // 2, -2, -1], axis=0)
+        frames_mass = [cycle_data['mass'][0], cycle_data['mass'][1], cycle_data['mass'][len(cycle_frames) // 2], cycle_data['mass'][-2], cycle_data['mass'][-1]]
+        frames_time = [0, 2, len(cycle_frames) // 2 * 2, len(cycle_frames) * 2 - 4, len(cycle_frames) * 2 - 2]
+        
+        axp = plt.subplot(gs[i, 5])
+        axp.plot(np.arange(len(cycle_data['mass']))*2, cycle_data['mass'])
+        # axp.set_xlabel('time [min]')
+        # axp.set_ylabel('mass [pg]')
+        # Create subplots
+        for j in range(num_frames):
+            ax = plt.subplot(gs[i, j])
+            ax.imshow(frames[j])
+            ax.axis('off')
+            ax.set_aspect('auto')  # To maintain aspect ratio of images
+            axp.plot(frames_time[j], frames_mass[j], 'ro', label='Current Value', markersize=6)
+
+    plt.tight_layout()
+    plt.show()
+
+plot_valid_cycles(cell_cycles[2:7], img_stack)
+#%%
+
+def plot_valid_cycles(cell_cycles, img_stack):
+    num_cycles = len(cell_cycles)
+    num_frames = 5  # Number of frames to display
+
+    # Create a figure with equidistant grid spacing
+    fig = plt.figure(figsize=(12, 2 * num_cycles))
+    gs = gridspec.GridSpec(num_cycles, num_frames + 1, width_ratios=[1] * num_frames + [1])
+
+    for i, cycle_data in enumerate(cell_cycles):
+        # Get the cycle frames
+        cycle_frames = get_cell_cycle_frames(cycle_data, img_stack)
+        frames = np.take(cycle_frames, [0, 1, len(cycle_frames) // 2, -2, -1], axis=0)
+        frames_mass = [cycle_data['mass'][0], cycle_data['mass'][1], cycle_data['mass'][len(cycle_frames) // 2], cycle_data['mass'][-2], cycle_data['mass'][-1]]
+        frames_time = [0, 2, len(cycle_frames) // 2 * 2, len(cycle_frames) * 2 - 4, len(cycle_frames) * 2 - 2]
+        
+        axp = plt.subplot(gs[i, 5])
+        axp.plot(np.arange(len(cycle_data['mass'])) * 2, cycle_data['mass'])
+        if i == 5:
+            axp.set_xlabel('time [min]')
+        axp.set_ylabel('mass [pg]')
+
+        # Create subplots
+        for j in range(num_frames):
+            ax = plt.subplot(gs[i, j])
+            im = ax.imshow(frames[j], aspect='auto')
+            ax.axis('off')
+            axp.plot(frames_time[j], frames_mass[j], 'ro', label='Current Value', markersize=6)
+
+    plt.tight_layout()
+    plt.show()
+
+plot_valid_cycles(cell_cycles[2:8], img_stack)
+#%%
+
+def plot_valid_cycles(cell_cycles, img_stack):
+    num_cycles = len(cell_cycles)
+    num_frames = 5  # Number of frames to display
+    imsize = 2
+
+    # Create a figure with equidistant grid spacing
+    fig, axes = plt.subplots(num_cycles, num_frames, figsize=(imsize * num_frames, imsize * num_cycles))
+
+    for i, cycle_data in enumerate(cell_cycles):
+        # Get the cycle frames
+        cycle_frames = get_cell_cycle_frames(cycle_data, img_stack)
+        frames = np.take(cycle_frames, [0, 1, len(cycle_frames) // 2, -2, -1], axis=0)
+
+        # Create subplots
+        for j in range(num_frames):
+            axes[i, j].imshow(frames[j])
+            axes[i, j].axis('off')
+
+    plt.tight_layout()
+    plt.show()
+    
+    fig, axes = plt.subplots(num_cycles, 1, figsize=(imsize * 1.2, imsize* num_cycles))
+    for i, cycle_data in enumerate(cell_cycles):
+        # Get the cycle frames
+        frames_mass = [cycle_data['mass'][0]*1000, cycle_data['mass'][1]*1000, cycle_data['mass'][len(cycle_data['mass']) // 2]*1000, cycle_data['mass'][-2]*1000, cycle_data['mass'][-1]*1000]
+        frames_time = [0, 2, len(cycle_data['mass']) // 2 * 2, len(cycle_data['mass']) * 2 - 4, len(cycle_data['mass']) * 2 - 2]
+        
+        axes[i].plot(np.arange(len(cycle_data['mass'])) * 2, np.array(cycle_data['mass'])*1000)
+        if i == 5:
+            axes[i].set_xlabel('time [min]')
+        axes[i].set_ylabel('mass [fg]')
+        
+        for j in range(num_frames):
+            axes[i].plot(frames_time[j], frames_mass[j], 'ro', label='Current Value', markersize=6)
+            
+    plt.tight_layout()
+    plt.savefig(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\Graphes_Images\Graphes_Images\cell_cycles\cell_cycles_plots', dpi=300)
+
+plot_valid_cycles(cell_cycles[2:8], img_stack)

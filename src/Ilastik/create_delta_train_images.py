@@ -135,6 +135,7 @@ def calculate_adjusted_centroids(image_mask, half_side_length):
     return centroid_x, centroid_y, xmin, ymin, xmax, ymax
 
 #%%
+# Change the folder names if neccessary
 base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\ilastik\all'
 image_folder = base_folder + os.sep + 'images'
 objectId_folder = base_folder + os.sep + 'objectId'
@@ -148,6 +149,8 @@ if not os.path.exists(tracking_folder):
 names = os.listdir(image_folder)
 
 unique_timelines = set(list([n[:-10] for n in names]))
+# Can add all processed experiment positions here so they dont get processed again.
+# At the moment they are all commented out (so all are processed).
 processed_timelines = []
 """['F3_20230406_00001',
 'F3_20230406_00002',

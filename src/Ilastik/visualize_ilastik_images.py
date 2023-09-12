@@ -210,8 +210,8 @@ def save_tif_uint8(array, filename):
     tifffile.imwrite(filename, array)
 
 #%%
-
-base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\ilastik'
+# Define the positions, change the folder locations if necessary.
+base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\ilastik'
 data_series = 'E10_20230413'
 position = '00012'
 position_folder = base_folder + os.sep + data_series
@@ -222,13 +222,18 @@ images = read_h5_file(image_folder)
 masks = read_h5_file(mask_folder)
 df_tracking = pd.read_csv(tracking, usecols= ['frame','labelimageId','trackId','parentTrackId'])
 
+# Use this to see until which frame Ilastik's segmentation worked.
+# Remember the frame and put it in the block below
 overlay_mask_with_slider(images, masks, df_tracking)
 
 #%%
-save_base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\ilastik\all'
+# Define save location, change the folder locations if necessary.
+save_base_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\ilastik\all'
 save_images_folder = save_base_folder + os.sep + 'images'
 save_objectId_folder = save_base_folder + os.sep + 'objectId'
 
+# IMPORTANT change with the range until which frame images should be saved
+# One position at the time
 for i in range(19):
     timestep = str(i).zfill(5)
     name = f'{data_series}_{position}_{timestep}.tif'

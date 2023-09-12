@@ -12,6 +12,7 @@ import matplotlib.animation as animation
 import cv2
 
 def add_contours_to_linage(pos):
+    "adds contours of the cell boundaries to the lineages features."
     lin = pos.rois[0].lineage
     label_stack = pos.rois[0].label_stack
     for cell in lin.cells:
@@ -28,6 +29,7 @@ def add_contours_to_linage(pos):
     return lin
     
 def check_splits(cell_cycle):
+    "checks if the bacteria as between 0.3 and 0.7 times the mass after the split compared to before."
     cell_opl = cell_cycle['integrated_opl']
     first_split = cell_opl[1]/cell_opl[0]
     second_split = cell_opl[-1]/cell_opl[-2]
@@ -39,11 +41,13 @@ def check_splits(cell_cycle):
         return True
 
 def ckeck_growth_steps(cell_cycle):
+    "checks if the induvidual growth steps are between 0.9 and 1.3 times the previous mass."
     cell_opl = cell_cycle['integrated_opl']
     growth = (np.roll(cell_opl,-1)/cell_opl)[1:-2]
     return np.all((growth >= 0.9) & (growth <= 1.3))
 
 def check_absolute_growth(cell_cycle):
+    "checks the absolute growth of a cell cycle."
     cell_opl = cell_cycle['integrated_opl']
     abs_growth = cell_opl[-2]/cell_opl[1]
     if abs_growth < 1.5 or 3 < abs_growth:
@@ -52,6 +56,7 @@ def check_absolute_growth(cell_cycle):
         return True
 
 def check_movement(cell_cycle):
+    "checks if movemnts are not too big, indicating tracking problems"
     midpoints = np.mean([cell_cycle['new_pole'],cell_cycle['old_pole']], axis=0)
     midpoint_shifts = np.roll(midpoints,-1, axis=0)-midpoints
     distance = np.sqrt(np.sum(midpoint_shifts**2, axis=1))[1:-2]
@@ -180,6 +185,7 @@ def display_image_series(image_series_list, values_list):
     plt.show()
 
 def get_cell_cycle_frames(cell_cycle, img_stack, frame_size: int = 80):
+    "returns a list of the with the cut out frames of the cell cycle."
     frames = []
     mid_point = np.mean([cell_cycle['new_pole'][1],cell_cycle['old_pole'][1]], axis=0).astype(np.uint16)
     for i in range(len(cell_cycle['frames'])):
@@ -191,6 +197,9 @@ def get_cell_cycle_frames(cell_cycle, img_stack, frame_size: int = 80):
     return frames
     
 def get_cell_cycles(pos, with_contours: bool = True, only_valid: bool = True):
+    """calculates all cell cycles of a DeLTA time-lapse position. 
+    First cells are split into possible cell cycle, including last mother cell timestep, 
+    then unplausable cell cycles are fitered out."""
     # returns list with all complete cell cycles. One image before first split one after secand
     if with_contours:
         lin = add_contours_to_linage(pos)

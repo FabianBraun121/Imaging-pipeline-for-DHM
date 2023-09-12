@@ -1,0 +1,15 @@
+data_gen_args = dict(
+    rotation=2,
+    rotations_90d=True,
+    zoom=0.15,
+    horizontal_flip=True,
+    vertical_flip=True,
+    illumination_voodoo=True,
+    gaussian_noise=0.003,
+    gaussian_blur=0.1,
+    elastic_deformation={'sigma': 25, 'points': 5},
+)
+
+Result:
+loss: 21.9614 - unstack_acc: 0.9990
+too many false positive bacterias, starting with frame 15
