@@ -61,8 +61,8 @@ unit_code: int = 1
 "Unit code for koala. (0 -> no unit, 1 -> radians, 2 -> meters)"
 image_cut: Tuple[Tuple[int]] = ((10, 710), (90, 790))
 "Edges are not useable because of the spatial averaging. Image are cropped"
-save_format: str = ".tif"
-".tif or .bin. If image is also sent through delta it has to be .tif"
+save_format: str = "delta"
+".tif, .bin or delta. If delta is selected images names are selected that work with delta. BF images are always saved as .tif"
 
 koala_reset_frequency: int = 20
 "Koala slows down with time (due to accumulation of memory). Periodic restart is required. If local_grid_search=True frequency 20 is recommended, if False 10."
@@ -72,6 +72,20 @@ dilute_cells: int = 3
 create space. So after delta cells need to be diluted again."""
 
 delta_assets_path: Path = Path(Path(BASE_PATH).parent, 'data', 'delta_assets')
+
+bf_image: bool = False
+"Is there a bf (brightfield) image and should it be evaluated"
+bf_local_searches: int = 4
+"number of local searches. Increases processing time and accuracy. Each search decreases search length by a factor of 3."
+bf_rot_guess: float = 0.0
+"Initial guess for rotation"
+bf_rot_search_length: float = 1.0
+"length of the rot search"
+bf_zoom_guess: float = 0.9
+"Initial guess for zoom"
+bf_zoom_search_length: float = 0.1
+"length of the zoom search"
+
 
 def load_config(koala_config_nrIn: int, display_always_onIn: bool = None,
                 local_grid_searchIn: bool = None, nfevaluationsIn : Tuple[int] = None,
@@ -140,6 +154,12 @@ def load_config(koala_config_nrIn: int, display_always_onIn: bool = None,
     
     global _LOADED
     _LOADED = True
+
+def set_bf_rot_zoom(rot_guess, zoom_guess):
+    global bf_rot_guess
+    bf_rot_guess = rot_guess
+    global bf_zoom_guess
+    bf_zoom_guess = zoom_guess
 
 def set_image_variables(image_sizeIn: Tuple, px_sizeIn: float, laser_lambd: float):
     # hconv is hard coded and can not be changed, since Koala uses the wrong hconv

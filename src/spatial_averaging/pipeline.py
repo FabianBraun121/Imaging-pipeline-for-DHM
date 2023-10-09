@@ -13,6 +13,7 @@ import numpy.typing as npt
 import cv2
 import tifffile
 import json
+import skimage.transform as trans
 from datetime import datetime
 from typing import List, Union, Tuple
 from pathlib import Path
@@ -22,7 +23,10 @@ from sklearn.preprocessing import PolynomialFeatures
 from scipy.optimize import minimize, Bounds
 
 sys.path.append("..")
-from .utilities import get_result_unwrap, get_masks_corners, logout_login_koala, shut_down_restart_koala, start_koala, crop_image
+from .utilities import (
+    get_result_unwrap, get_masks_corners, gradient_squared, grid_search_2d,
+    logout_login_koala,shut_down_restart_koala, start_koala, crop_image, zoom
+)
 import config as cfg
 
 from . import binkoala
@@ -606,7 +610,23 @@ class Pipeline:
         "count of the processed images, used for periodically restarting Koala"
         start_koala()
 
-        
+    
+    def get_bf_image(self, phase_image: Image, t: int) -> Image:
+        bf_fname = 0
+        bf = tifffile.imread(bf_fname)[512:1536,512:1536]
+        bf = np.fliplr(bf)
+        bf = trans.rotate(bf, -90, mode="edge")
+        ph = np.zeros(bf.shape)
+        ph[:phase_image.shape[0], :phase_image.shape[1]] = phase_image
+        bf_ = gradient_squared(bf)
+        ph_ = gradient_squared(ph)
+        rot, zoomlevel = grid_search_2d(ph_, bf_, cfg.bf_rot_guess, cfg.bf_zoom_guess, cfg.bf_rot_search_length,
+                                        cfg.bf_zoom_search_length, cfg.bf_local_searches)
+        cfg.set_bf_rot_zoom(rot, zoomlevel)
+        bf_rz = zoom(trans.rotate(bf_, rot, mode="edge"),zoomlevel).astype(np.float32)
+        return bf_rz[:phase_image.shape[0], :phase_image.shape[1]]
+    
+    
     def _get_mask_from_rectangle(self, image: Image, title: str = None) -> Mask:
         "shows an image and waits until a recangle is selected. Returns the mask of the rectangle"
         # Show the image and wait for user to select a rectangle
@@ -706,16 +726,31 @@ class Pipeline:
             
     def _save_image(self, phase_image, save_pos_folder, t):
         "saves the images in the selected format. If .tif is selected it is saved twice to conform with the delta pipeline"
-        if cfg.save_format == ".tif":
+        if cfg.save_format == ".delta":
             ph_scaled = (((phase_image + np.pi/2) / np.pi) * 65535).astype(np.uint16)
             fname_scaled = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha1fra{str(t + 1 - self.first_timestep).zfill(5)}.tif"
             fname_scaled2 = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha2fra{str(t + 1 - self.first_timestep).zfill(5)}.tif"
-            tifffile.imwrite(fname_scaled, ph_scaled)
+            if cfg.bf_image:
+                bf = self.calculate_bf_image(phase_image, t)
+                bf_scaled = ((bf - bf.min())/(bf.max() - bf.min()) * 65535).astype(np.uint16)
+                tifffile.imwrite(fname_scaled, bf_scaled)
+            else:
+                tifffile.imwrite(fname_scaled, ph_scaled)
             tifffile.imwrite(fname_scaled2, ph_scaled)
+        
+        if cfg.save_format == ".tif":
+            ph_fname = save_pos_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
+            tifffile.imwrite(ph_fname, phase_image)
+            if cfg.bf_image:
+                bf_fname = save_pos_folder +"\\bf_timestep_" + str(t).zfill(5) + cfg.save_format
+                tifffile.imwrite(bf_fname, self.calculate_bf_image(phase_image, t))
             
         if cfg.save_format == ".bin":
             fname = save_pos_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
             binkoala.write_mat_bin(fname, phase_image, phase_image.shape[0], phase_image.shape[1], cfg.px_size, cfg.hconv, cfg.unit_code)
+            if cfg.bf_image:
+                bf_fname = save_pos_folder +"\\bf_timestep_" + str(t).zfill(5) + '.tif'
+                tifffile.imwrite(bf_fname, self.calculate_bf_image(phase_image, t))
     
     def _saving_dir(self, saving_dir: Union[str, Path]) -> Path:
         "returns the saveing dir"
