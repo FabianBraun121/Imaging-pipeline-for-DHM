@@ -83,6 +83,7 @@ def grid_search(image1, image2, x_mid, y_mid, x_length, y_length):
             y_length /= 3
             x_start, x_end = min_x - x_length/2, min_x + x_length/2
             y_start, y_end = min_y - y_length/2, min_y + y_length/2
+            
     return min_x,min_y
 
 def gradient_squared(image):
@@ -90,43 +91,51 @@ def gradient_squared(image):
     grad_y = ndimage.sobel(image, axis=1)
     return (grad_x**2+grad_y**2)
 
-base_path = r'C:\Users\fabia\Documents\GitHub\Imaging-pipeline-for-DHM\data\E_coli_steady_state_100_pos'
-save_base_path = r'C:\Users\fabia\Documents\GitHub\Imaging-pipeline-for-DHM\data\E_coli_steady_state_100_pos\Aligned_images\E_coli_1430'
-bf_path = base_path + os.sep + ""
-os.listdir(base_path)
-image_nums = np.arange(1,101)
-rots = []
-zooms = []
-shift_vectors = []
-image_stack = []
-
-for image_num in image_nums:
-    start = time.time()
-    bf_path = base_path + os.sep + 'E_coli_1430' + os.sep + f'{str(image_num).zfill(5)}' + os.sep + '00000_BF.tif'
-    ph_path = base_path + os.sep + 'E_coli_1430 phase averages' + os.sep +  f'{str(image_num).zfill(5)}' + os.sep + 'ph_timestep_00000.bin'
-    
-    bf = tifffile.imread(bf_path)[512:1536,512:1536]
-    bf = np.fliplr(bf)
-    bf = trans.rotate(bf, -90, mode="edge")
-    ph, _ = binkoala.read_mat_bin(ph_path)
-    ph_ = np.zeros(bf.shape)
-    ph_[:ph.shape[0], :ph.shape[1]] = ph
-    
-    bf_ = gradient_squared(bf)
-    ph_ = gradient_squared(ph_)
-    rot, zoomlevel = grid_search(ph_, bf_, 0, 0.9, 0.5, 0.1)
-    bf_rz = zoom(trans.rotate(bf_, rot, mode="edge"),zoomlevel)
-    shift_measured = phase_cross_correlation(ph_, bf_rz, upsample_factor=10, normalization=None)[0]
-    shift_vector = (shift_measured[0], shift_measured[1])
-    
-    bf_out = ndimage.shift(zoom(trans.rotate(bf, rot, mode="edge"),zoomlevel), shift_vector)[:ph.shape[0], :ph.shape[1]]
-    fname = save_folder + os.sep + f'{str(image_num).zfill(5)}_BF.tif'
-    tifffile.imwrite(fname, bf_out)
-    
-    rots.append(rot)
-    zooms.append(zoomlevel)
-    shift_vectors.append(shift_vector)
-    image_stack.append((ph-ph.min())/(ph.max()-ph.min()))
-    image_stack.append((bf_out-bf_out.min())/(bf_out.max()-bf_out.min()))
-    
-    print(f'image {image_num} done in {time.time()-start} seconds')
+base_path = r'C:\Users\fabia\OneDrive\Dokumente\GitHub\Imaging-pipeline-for-DHM\data\20230905-1643'
+save_base_path = base_path + os.sep + 'aligned_images'
+bf_base_path = base_path + os.sep + '20230905-1643 BF'
+ph_base_path = base_path + os.sep + '20230905-1643 phase averages'
+postitions = os.listdir(bf_base_path)
+for postition in postitions:
+    bf_positions_path = bf_base_path + os.sep + postition
+    ph_positions_path = ph_base_path + os.sep + postition
+    num_timesteps = len(os.listdir(bf_positions_path))
+    save_folder_path = save_base_path + os.sep + postition
+    if not os.path.exists(save_folder_path):
+        os.makedirs(save_folder_path)
+        
+    rots = []
+    zooms = []
+    shift_vectors = []
+    for timestep in range(num_timesteps):
+        start = time.time()
+        bf_fname = bf_positions_path + os.sep + f'{str(timestep).zfill(5)}_BF.tif'
+        ph_fname = ph_positions_path + os.sep + f'ph_timestep_{str(timestep).zfill(5)}.bin'
+        
+        bf = tifffile.imread(bf_fname)[512:1536,512:1536]
+        bf = np.fliplr(bf)
+        bf = trans.rotate(bf, -90, mode="edge")
+        ph, _ = binkoala.read_mat_bin(ph_fname)
+        ph_ = np.zeros(bf.shape)
+        ph_[:ph.shape[0], :ph.shape[1]] = ph
+        
+        bf_ = gradient_squared(bf)
+        ph_ = gradient_squared(ph_)
+        rot, zoomlevel = grid_search(ph_, bf_, 0, 0.9, 0.5, 0.1)
+        bf_rz = zoom(trans.rotate(bf_, rot, mode="edge"),zoomlevel)
+        shift_measured = phase_cross_correlation(ph_, bf_rz, upsample_factor=10, normalization=None)[0]
+        shift_vector = (shift_measured[0], shift_measured[1])
+        
+        bf_out = ndimage.shift(zoom(trans.rotate(bf, rot, mode="edge"),zoomlevel), shift_vector)[:ph.shape[0], :ph.shape[1]]
+        fname = save_folder_path + os.sep + f'{str(timestep).zfill(5)}_BF.tif'
+        tifffile.imwrite(fname, bf_out)
+        
+        rots.append(rot)
+        zooms.append(zoomlevel)
+        shift_vectors.append(shift_vector)
+        
+        print(f'image p:{postition} t:{timestep} done in {np.round(time.time()-start,1)} seconds')
+        
+    np.save(save_folder_path + os.sep + 'rotations', rots)
+    np.save(save_folder_path + os.sep + 'zooms', zooms)
+    np.save(save_folder_path + os.sep + 'shift_vectors', shift_vectors)
