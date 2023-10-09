@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Oct  9 10:52:28 2023
+Created on Mon Oct  9 16:54:12 2023
 
 @author: fabia
 """
+
 import os
 os.chdir(os.path.dirname(__file__))
 import binkoala
@@ -90,12 +91,15 @@ def gradient_squared(image):
     return (grad_x**2+grad_y**2)
 
 base_path = r'C:\Users\fabia\Documents\GitHub\Imaging-pipeline-for-DHM\data\E_coli_steady_state_100_pos'
-save_folder = r'C:\Users\fabia\Documents\GitHub\Imaging-pipeline-for-DHM\data\E_coli_steady_state_100_pos\Aligned_images\E_coli_1430'
+save_base_path = r'C:\Users\fabia\Documents\GitHub\Imaging-pipeline-for-DHM\data\E_coli_steady_state_100_pos\Aligned_images\E_coli_1430'
+bf_path = base_path + os.sep + ""
+os.listdir(base_path)
 image_nums = np.arange(1,101)
 rots = []
 zooms = []
 shift_vectors = []
 image_stack = []
+
 for image_num in image_nums:
     start = time.time()
     bf_path = base_path + os.sep + 'E_coli_1430' + os.sep + f'{str(image_num).zfill(5)}' + os.sep + '00000_BF.tif'
@@ -126,90 +130,3 @@ for image_num in image_nums:
     image_stack.append((bf_out-bf_out.min())/(bf_out.max()-bf_out.min()))
     
     print(f'image {image_num} done in {time.time()-start} seconds')
-#%%
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Button
-import numpy as np
-
-class ImageViewer:
-    def __init__(self, image_stack):
-        self.image_stack = image_stack
-        self.current_index = 0
-
-        self.fig, self.ax = plt.subplots()
-        plt.subplots_adjust(bottom=0.2)
-
-        self.img = self.ax.imshow(self.image_stack[self.current_index], cmap='gray')
-        self.ax.set_title(f'Image {self.current_index + 1}/{len(self.image_stack)}')
-
-        axprev = plt.axes([0.7, 0.05, 0.1, 0.075])
-        axnext = plt.axes([0.81, 0.05, 0.1, 0.075])
-        self.bnext = Button(axnext, 'Next')
-        self.bnext.on_clicked(self.next_image)
-        self.bprev = Button(axprev, 'Previous')
-        self.bprev.on_clicked(self.prev_image)
-
-        self.connect_key_events()
-
-    def connect_key_events(self):
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
-
-    def on_key(self, event):
-        if event.key == 'right':
-            self.next_image(None)
-        elif event.key == 'left':
-            self.prev_image(None)
-
-    def next_image(self, event):
-        self.current_index = (self.current_index + 1) % len(self.image_stack)
-        self.update_image()
-
-    def prev_image(self, event):
-        self.current_index = (self.current_index - 1) % len(self.image_stack)
-        self.update_image()
-
-    def update_image(self):
-        self.img.set_data(self.image_stack[self.current_index])
-        self.ax.set_title(f'Image {self.current_index + 1}/{len(self.image_stack)}')
-        self.fig.canvas.draw()
-
-viewer = ImageViewer(image_stack)
-plt.show()
-
-
-#%%
-plt.figure('bf')
-plt.imshow(zoom(trans.rotate(bf_, 0, mode="edge"),0.92))
-plt.figure('ph')
-plt.imshow(ph_)
-#%%
-errors = np.zeros((11,11))
-zoomlevels = np.linspace(0.89,0.91,11)
-rotations = np.linspace(-0.5,0.5,11)
-
-for i, rotation in enumerate(rotations):
-    for j, zoomlevel in enumerate(zoomlevels):
-        bf__ = trans.rotate(bf_, rotation, mode="edge")
-        bf__ = zoom(bf__, zoomlevel)
-        shift_measured, error, phasediff = phase_cross_correlation(ph_, bf__, upsample_factor=10, normalization=None)
-        print(shift_measured)
-        errors[i,j] = error
-plt.imshow(errors)
-min_index = np.unravel_index(np.argmin(errors), errors.shape)
-print(rotations[min_index[0]])
-print(zoomlevels[min_index[1]])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
