@@ -24,12 +24,12 @@ display_always_on: bool = True
 
 local_grid_search: bool = True
 "repeating grid search, around previous minimum (recommended). If False a scipy.optimize.minimize is used"
-nfevaluations : Tuple[int] = (10, 5, 5, 5, 5)
+nfevaluations : Tuple[int] = (10, 5, 5, 5)
 "gridsize of nth repeating search"
 focus_method: Tuple[str] = ("phase_sharpness", "std_amp", "std_amp", "std_amp", "std_amp") # 'std_amp', 'phase_sharpness', 'combined'
 "functions used to find mimimum. phase_sharpness recommended to find general location of mimimum, std_amp or combined recommended to find exact minimum."
 "If local_grid_search=False only the first function in focus_method tuple is used to find the minimum"
-nfev_max: int = 200
+nfev_max: int = 100
 "if minimum is found at the edges, an adjacent is used. If minimum is not found until nfev_max funciton evaluations iamge is labeled corrupted -> Message"
 
 optimizing_method: str = "Powell" # 'Nelder-Mead', 'Powell', 'CG', 'BFGS', 'L-BFGS-B', 'TNC', 'COBYLA','SLSQP', 'trust-constr'
@@ -37,11 +37,11 @@ optimizing_method: str = "Powell" # 'Nelder-Mead', 'Powell', 'CG', 'BFGS', 'L-BF
 tolerance: Optional[float] = None
 "Tolerance for termination of minimization. None is recommended"
 
-reconstruction_distance_low: float = -3.0
+reconstruction_distance_low: float = -2.0
 "Lowest tolerable focus distance. Minimization only searches above this distance. local_grid_search can find minium below, but deems the image corrupted"
-reconstruction_distance_high: float = -1.0
+reconstruction_distance_high: float = -1.5
 "Highest tolerable focus distance. Minimization only searches below this distance. local_grid_search can find minium above, but deems the image corrupted"
-reconstruction_distance_guess: float = -2.3
+reconstruction_distance_guess: float = -1.7
 "This is the best guess of the reconstruction distance of the operator."
 
 plane_fit_order: int = 4
@@ -61,7 +61,7 @@ unit_code: int = 1
 "Unit code for koala. (0 -> no unit, 1 -> radians, 2 -> meters)"
 image_cut: Tuple[Tuple[int]] = ((10, 710), (90, 790))
 "Edges are not useable because of the spatial averaging. Image are cropped"
-save_format: str = "delta"
+save_format: str = ".tif"
 ".tif, .bin or delta. If delta is selected images names are selected that work with delta. BF images are always saved as .tif"
 
 koala_reset_frequency: int = 20
@@ -73,19 +73,35 @@ create space. So after delta cells need to be diluted again."""
 
 delta_assets_path: Path = Path(Path(BASE_PATH).parent, 'data', 'delta_assets')
 
-bf_image: bool = False
+bf_image: bool = True
 "Is there a bf (brightfield) image and should it be evaluated"
+bf_cut: Tuple[Tuple[int]] = ((512, 1536), (512, 1536))
+"BF image is usually much bigger then the DHM phase image, only a part is used to speed up process"
 bf_local_searches: int = 4
 "number of local searches. Increases processing time and accuracy. Each search decreases search length by a factor of 3."
 bf_rot_guess: float = 0.0
 "Initial guess for rotation"
-bf_rot_search_length: float = 1.0
+bf_rot_search_length: float = 2.0
 "length of the rot search"
-bf_zoom_guess: float = 0.9
+bf_zoom_guess: float = 0.905
 "Initial guess for zoom"
-bf_zoom_search_length: float = 0.1
+bf_zoom_search_length: float = 0.2
 "length of the zoom search"
 
+ph_image: bool = True
+"Is there a ph (brightfield) image and should it be evaluated"
+ph_cut: Tuple[Tuple[int]] = ((412, 1436), (312, 1336))
+"BF image is usually much bigger then the DHM phase image, only a part is used to speed up process"
+ph_local_searches: int = 4
+"number of local searches. Increases processing time and accuracy. Each search decreases search length by a factor of 3."
+ph_rot_guess: float = 0.0
+"Initial guess for rotation"
+ph_rot_search_length: float = 2.0
+"length of the rot search"
+ph_zoom_guess: float = 0.905
+"Initial guess for zoom"
+ph_zoom_search_length: float = 0.2
+"length of the zoom search"
 
 def load_config(koala_config_nrIn: int, display_always_onIn: bool = None,
                 local_grid_searchIn: bool = None, nfevaluationsIn : Tuple[int] = None,
@@ -160,6 +176,12 @@ def set_bf_rot_zoom(rot_guess, zoom_guess):
     bf_rot_guess = rot_guess
     global bf_zoom_guess
     bf_zoom_guess = zoom_guess
+
+def set_ph_rot_zoom(rot_guess, zoom_guess):
+    global ph_rot_guess
+    ph_rot_guess = rot_guess
+    global ph_zoom_guess
+    ph_zoom_guess = zoom_guess
 
 def set_image_variables(image_sizeIn: Tuple, px_sizeIn: float, laser_lambd: float):
     # hconv is hard coded and can not be changed, since Koala uses the wrong hconv

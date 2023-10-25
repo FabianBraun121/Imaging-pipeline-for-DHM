@@ -71,10 +71,18 @@ class Position:
         "checks if a reconstructoin rectangle (used for focusing) is selected"
         self.pos_recon_corners: Tuple[Tuple[int]] = None  #((ymin, ymax), (xmin, xmax))
         "focusing only inside this rectangle"
-        self.backgrounds = []
+        self.backgrounds: List[CplxImage] = []
         "list for storage of the first 10 backgrounds"
-        self.background = self._background()
+        self.background: CplxImage = self._background()
         "if background exists its loaded here"
+        self.bf_rz: Tuple[float,float] = None
+        "if bf exists and the rotation and zoom are calculated, it is stored here"
+        self.bf_rz_list: List[Tuple[float,float]] = []
+        "rotation and zoom storage of the first calculated"
+        self.ph_rz: Tuple[float,float] = None
+        "if ph exists and the rotation and zoom are calculated, it is stored here"
+        self.ph_rz_list: List[Tuple[float,float]] = []
+        "rotation and zoom storage of the first calculated"
         
         
     def average_backgrounds(self):
@@ -88,6 +96,16 @@ class Position:
             return np.array(tifffile.imread(str(self.pos_dir)+os.sep+'background.tif'))
         else:
             return None
+    
+    def calculate_median_bf_rz(self):
+        rot = np.median(np.array(self.bf_rz)[:,0])
+        zoom = np.median(np.array(self.bf_rz)[:,1])
+        self.bf_rz = (rot, zoom)
+    
+    def calculate_median_ph_rz(self):
+        rot = np.median(np.array(self.ph_rz)[:,0])
+        zoom = np.median(np.array(self.ph_rz)[:,1])
+        self.ph_rz = (rot, zoom)
             
     def get_background(self):
         return self.background.copy()
@@ -345,6 +363,8 @@ class Hologram:
                 if cfg.nfev_max<self.nfev:
                     print(f'{self.fname} could not find a focus point')
                     self.corrupted = True
+                    break
+                
             self.focus = x[np.argmin(focus_scores)]
             self.focus_score = np.min(focus_scores)
             if self.focus<cfg.reconstruction_distance_low or cfg.reconstruction_distance_high<self.focus:
@@ -467,6 +487,8 @@ class SpatialPhaseAveraging:
         "Position class with all the relevant informations about the position"
         self.timestep: int = timestep
         "timestep of the images which are averaged"
+        self.corrupted: bool = False
+        "If all holograms in the spatial averaging are corrupted, spa is also corrupted"
         self.placements: List[Placement] = placements
         "list of all placements. Placement is a class with informations about the placement of the hologram"
         self.holograms: List[Hologram] = self._generate_holograms()
@@ -480,6 +502,8 @@ class SpatialPhaseAveraging:
     
     
     def _background(self) -> CplxImage:
+        if self.corrupted:
+            return None
         "if position has a background this is taken. Else the background of this timestep is calculated. Appends this background to the position."
         if self.position.background is not None:
             return self.position.get_background()
@@ -497,6 +521,8 @@ class SpatialPhaseAveraging:
             return background
     
     def _spatial_avg(self) -> CplxImage:
+        if self.corrupted:
+            return None
         "spatial average of all the images. (repeat for each image(Image -> background subtracted ->shifted->added))/number of images"
         spatial_avg = self.holograms[0].get_cplx_image()
         spatial_avg /= self.background
@@ -523,6 +549,9 @@ class SpatialPhaseAveraging:
             # first guess is the focus point of the last image
             pl.set_x0_guess(hologram.focus)
             holograms.append(hologram)
+        holograms = [h for h in holograms if not h.corrupted]
+        if len(holograms)==0:
+            self.corrupted = True
         return [h for h in holograms if not h.corrupted]
     
     def get_background(self) -> CplxImage:
@@ -611,20 +640,57 @@ class Pipeline:
         start_koala()
 
     
-    def get_bf_image(self, phase_image: Image, t: int) -> Image:
-        bf_fname = 0
-        bf = tifffile.imread(bf_fname)[512:1536,512:1536]
+    def calculate_bf_image(self, phase_image: Image, po: Position, t: int) -> Image:
+        bf_fname = Path(po.pos_dir, f'{str(t).zfill(5)}_BF.tif')
+        bf = tifffile.imread(bf_fname)
         bf = np.fliplr(bf)
-        bf = trans.rotate(bf, -90, mode="edge")
-        ph = np.zeros(bf.shape)
-        ph[:phase_image.shape[0], :phase_image.shape[1]] = phase_image
+        bf = trans.rotate(bf, -90, mode="edge")[cfg.bf_cut[0][0]:cfg.bf_cut[0][1],cfg.bf_cut[1][0]:cfg.bf_cut[1][1]]
+        phase_ = np.zeros(bf.shape)
+        phase_[:phase_image.shape[0], :phase_image.shape[1]] = phase_image
         bf_ = gradient_squared(bf)
+        phase_ = gradient_squared(phase_)
+        if po.bf_rz is None:
+            rot, zoomlevel = grid_search_2d(phase_, bf_, cfg.bf_rot_guess, cfg.bf_zoom_guess, cfg.bf_rot_search_length,
+                                            cfg.bf_zoom_search_length, cfg.bf_local_searches)
+            po.bf_rz_list.append((rot, zoomlevel))
+            if len(po.bf_rz_list) == 10:
+                po.calculate_median_bf_rz()
+        else:
+            rot, zoomlevel = po.bf_rz
+        bf_rz = zoom(trans.rotate(bf_, rot, mode="edge"),zoomlevel)
+        try:
+            shift_measured = phase_cross_correlation(phase_, bf_rz, upsample_factor=10, normalization=None)[0]
+        except:
+            shift_measured = phase_cross_correlation(phase_, bf_rz, upsample_factor=10)[0]
+        shift_vector = (shift_measured[0], shift_measured[1])
+        bf_out = ndimage.shift(zoom(trans.rotate(bf, rot, mode="edge"),zoomlevel), shift_vector)
+        return bf_out[:phase_image.shape[0], :phase_image.shape[1]]
+    
+    def calculate_ph_image(self, phase_image: Image, po: Position, t: int) -> Image:
+        ph_fname = Path(po.pos_dir, f'{str(t).zfill(5)}_PH.tif')
+        ph = tifffile.imread(ph_fname)
+        ph = np.fliplr(ph)
+        ph = trans.rotate(ph, -90, mode="edge")[cfg.ph_cut[0][0]:cfg.ph_cut[0][1],cfg.ph_cut[1][0]:cfg.ph_cut[1][1]]
+        phase_ = np.zeros(ph.shape)
+        phase_[:phase_image.shape[0], :phase_image.shape[1]] = phase_image
         ph_ = gradient_squared(ph)
-        rot, zoomlevel = grid_search_2d(ph_, bf_, cfg.bf_rot_guess, cfg.bf_zoom_guess, cfg.bf_rot_search_length,
-                                        cfg.bf_zoom_search_length, cfg.bf_local_searches)
-        cfg.set_bf_rot_zoom(rot, zoomlevel)
-        bf_rz = zoom(trans.rotate(bf_, rot, mode="edge"),zoomlevel).astype(np.float32)
-        return bf_rz[:phase_image.shape[0], :phase_image.shape[1]]
+        phase_ = gradient_squared(phase_)
+        if po.ph_rz is None:
+            rot, zoomlevel = grid_search_2d(phase_, ph_, cfg.ph_rot_guess, cfg.ph_zoom_guess, cfg.ph_rot_search_length,
+                                            cfg.ph_zoom_search_length, cfg.ph_local_searches)
+            po.ph_rz_list.append((rot, zoomlevel))
+            if len(po.ph_rz_list) == 10:
+                po.calculate_median_ph_rz()
+        else:
+            rot, zoomlevel = po.ph_rz
+        ph_rz = zoom(trans.rotate(ph_, rot, mode="edge"),zoomlevel).astype(np.float32)
+        try:
+            shift_measured = phase_cross_correlation(phase_, ph_rz, upsample_factor=10, normalization=None)[0]
+        except:
+            shift_measured = phase_cross_correlation(phase_, ph_rz, upsample_factor=10)[0]
+        shift_vector = (shift_measured[0], shift_measured[1])
+        ph_out = ndimage.shift(zoom(trans.rotate(ph, rot, mode="edge"),zoomlevel), shift_vector)
+        return ph_out[:phase_image.shape[0], :phase_image.shape[1]]
     
     
     def _get_mask_from_rectangle(self, image: Image, title: str = None) -> Mask:
@@ -689,7 +755,9 @@ class Pipeline:
             last_phase_image = None
             for t in self.timesteps:
                 start_image = time.time()
-                spa = SpatialPhaseAveraging(po, placements, t) 
+                spa = SpatialPhaseAveraging(po, placements, t)
+                if spa.corrupted:    
+                    continue
                 averaged_phase_image = get_result_unwrap(np.angle(spa.get_spatial_avg())).astype(np.float32)
                 if last_phase_image is not None:
                     averaged_phase_image = self._temporal_shift_correction(last_phase_image, averaged_phase_image)
@@ -706,7 +774,7 @@ class Pipeline:
                 if not os.path.exists(save_pos_folder):
                     os.makedirs(save_pos_folder)
                 
-                self._save_image(phase_image, save_pos_folder, t)
+                self._save_image(phase_image, po, save_pos_folder, t)
                 
                 last_phase_image = averaged_phase_image
                 duration_timestep = np.round(time.time()-start_image,1)
@@ -724,38 +792,49 @@ class Pipeline:
             del placements
             gc.collect()
             
-    def _save_image(self, phase_image, save_pos_folder, t):
+    def _save_image(self, phase_image: Image, po: Position, save_pos_folder: Path, t: int):
         "saves the images in the selected format. If .tif is selected it is saved twice to conform with the delta pipeline"
         if cfg.save_format == ".delta":
             ph_scaled = (((phase_image + np.pi/2) / np.pi) * 65535).astype(np.uint16)
             fname_scaled = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha1fra{str(t + 1 - self.first_timestep).zfill(5)}.tif"
             fname_scaled2 = save_pos_folder + os.sep + f"pos{save_pos_folder[-5:]}cha2fra{str(t + 1 - self.first_timestep).zfill(5)}.tif"
-            if cfg.bf_image:
-                bf = self.calculate_bf_image(phase_image, t)
-                bf_scaled = ((bf - bf.min())/(bf.max() - bf.min()) * 65535).astype(np.uint16)
-                tifffile.imwrite(fname_scaled, bf_scaled)
+            if cfg.bf_image or cfg.ph_image:
+                if cfg.bf_image:
+                    bf = self.calculate_bf_image(phase_image, po, t)
+                    bf_scaled = ((bf - bf.min())/(bf.max() - bf.min()) * 65535).astype(np.uint16)
+                    tifffile.imwrite(fname_scaled, bf_scaled)
+                else:
+                    ph = self.calculate_ph_image(phase_image, po, t)
+                    ph_scaled = ((ph - ph.min())/(ph.max() - ph.min()) * 65535).astype(np.uint16)
+                    tifffile.imwrite(fname_scaled, ph_scaled)
             else:
                 tifffile.imwrite(fname_scaled, ph_scaled)
             tifffile.imwrite(fname_scaled2, ph_scaled)
         
         if cfg.save_format == ".tif":
-            ph_fname = save_pos_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
-            tifffile.imwrite(ph_fname, phase_image)
+            dhm_ph_fname = save_pos_folder + os.sep + str(t).zfill(5) + "_DHM_PH" + cfg.save_format
+            tifffile.imwrite(dhm_ph_fname, phase_image)
             if cfg.bf_image:
-                bf_fname = save_pos_folder +"\\bf_timestep_" + str(t).zfill(5) + cfg.save_format
-                tifffile.imwrite(bf_fname, self.calculate_bf_image(phase_image, t))
+                bf_fname = save_pos_folder + os.sep + str(t).zfill(5) + "_BF" + cfg.save_format
+                tifffile.imwrite(bf_fname, self.calculate_bf_image(phase_image, po, t))
+            if cfg.ph_image:
+                ph_fname = save_pos_folder + os.sep + str(t).zfill(5) + "_PH" + cfg.save_format
+                tifffile.imwrite(ph_fname, self.calculate_ph_image(phase_image, po, t))
             
         if cfg.save_format == ".bin":
-            fname = save_pos_folder +"\\ph_timestep_" + str(t).zfill(5) + cfg.save_format
-            binkoala.write_mat_bin(fname, phase_image, phase_image.shape[0], phase_image.shape[1], cfg.px_size, cfg.hconv, cfg.unit_code)
+            dhm_ph_fname = save_pos_folder + os.sep + str(t).zfill(5) + "_DHM_PH" + cfg.save_format
+            binkoala.write_mat_bin(dhm_ph_fname, phase_image, phase_image.shape[0], phase_image.shape[1], cfg.px_size, cfg.hconv, cfg.unit_code)
             if cfg.bf_image:
-                bf_fname = save_pos_folder +"\\bf_timestep_" + str(t).zfill(5) + '.tif'
-                tifffile.imwrite(bf_fname, self.calculate_bf_image(phase_image, t))
+                bf_fname = save_pos_folder + os.sep + str(t).zfill(5) + "_BF" + cfg.save_format
+                tifffile.imwrite(bf_fname, self.calculate_bf_image(phase_image, po, t))
+            if cfg.ph_image:
+                ph_fname = save_pos_folder + os.sep + str(t).zfill(5) + "_PH" + cfg.save_format
+                tifffile.imwrite(ph_fname, self.calculate_ph_image(phase_image, po, t))
     
     def _saving_dir(self, saving_dir: Union[str, Path]) -> Path:
         "returns the saveing dir"
         if saving_dir == None:
-            saving_dir = Path(str(self.base_dir) + " phase averages")
+            saving_dir = Path(str(self.base_dir) + " processed")
             if not os.path.exists(str(saving_dir)):
                 os.makedirs(str(saving_dir))
         return Path(saving_dir)
@@ -773,18 +852,19 @@ class Pipeline:
                 mask = self._get_mask_from_rectangle(ph_image)
             po.set_pos_image_roi(mask)
     
-    def select_positions_recon_rectangle(self, same_for_all_pos = False):
+    def select_positions_recon_rectangle(self, same_for_all_pos: bool = False, recon_corners: Tuple[Tuple[int]] = None):
         "allows for selection of the reconstruction rectangle (part where the focusing mehtod is applied), for each position."
-        crop_coords = None
         for po in self.positions:
+            if recon_corners is not None and same_for_all_pos:
+                po.set_pos_recon_corners(recon_corners)
+                continue
             p0_dir = Path(str(po.pos_dir) + os.sep + [d for d in os.listdir(str(po.pos_dir)) if os.path.isdir(Path(po.pos_dir,d))][0])
             p0 = Placement(place_dir=p0_dir, position=po)
             fname = Path(str(p0.place_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
             hologram = Hologram(fname, p0, focus = cfg.reconstruction_distance_guess)
             ph_image = np.angle(hologram.get_cplx_image())
-            if crop_coords is None or not same_for_all_pos:
-                crop_coords = self._get_rectangle_coordinates(ph_image)
-            po.set_pos_recon_corners(crop_coords)
+            recon_corners = self._get_rectangle_coordinates(ph_image)
+            po.set_pos_recon_corners(recon_corners)
             
     def _temporal_shift_correction(self, reference_image: Image, moving_image: Image) -> Image:
         "images can move overtime, this function corrects for the shift. Movement is due to different focus distances"
@@ -823,6 +903,22 @@ class Pipeline:
             "shift_x": tuple(int(placement.get_shift_vector()[1]) for placement in spa.placements),
             "shift_y": tuple(int(placement.get_shift_vector()[0]) for placement in spa.placements),
         }
+        
+        if cfg.bf_image:
+            if spa.position.bf_rz is not None:
+                rot, zoom = spa.position.bf_rz
+            else:
+                rot, zoom = spa.position.bf_rz_list[-1]
+            data["images"][image_name]["bf_rotation"] = rot
+            data["images"][image_name]["bf_zoom"] = zoom
+        
+        if cfg.ph_image:
+            if spa.position.ph_rz is not None:
+                rot, zoom = spa.position.ph_rz
+            else:
+                rot, zoom = spa.position.ph_rz_list[-1]
+            data["images"][image_name]["ph_rotation"] = rot
+            data["images"][image_name]["ph_zoom"] = zoom
         
         with open(self.data_file_path, 'w') as file:
             json.dump(data, file, indent=4)

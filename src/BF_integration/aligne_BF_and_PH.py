@@ -49,7 +49,7 @@ def grid_search(image1, image2, x_mid, y_mid, x_length, y_length):
     y_start, y_end = y_mid - y_length/2, y_mid + y_length/2
     
     count = 0
-    while count in range(3):
+    while count in range(4):
         # Create a grid based on the current boundaries.
         x_values = np.linspace(x_start, x_end, 5)
         y_values = np.linspace(y_start, y_end, 5)
@@ -89,8 +89,10 @@ def gradient_squared(image):
     grad_y = ndimage.sobel(image, axis=1)
     return (grad_x**2+grad_y**2)
 
-base_path = r'C:\Users\fabia\Documents\GitHub\Imaging-pipeline-for-DHM\data\E_coli_steady_state_100_pos'
-save_folder = r'C:\Users\fabia\Documents\GitHub\Imaging-pipeline-for-DHM\data\E_coli_steady_state_100_pos\Aligned_images\E_coli_1430'
+base_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\brightfield\E_coli_steady_state_100_pos'
+save_folder = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\brightfield\E_coli_steady_state_100_pos\Bf_images'
+if not os.path.exists(save_folder):
+    os.makedirs(save_folder)
 image_nums = np.arange(1,101)
 rots = []
 zooms = []
@@ -110,7 +112,7 @@ for image_num in image_nums:
     
     bf_ = gradient_squared(bf)
     ph_ = gradient_squared(ph_)
-    rot, zoomlevel = grid_search(ph_, bf_, 0, 0.9, 0.5, 0.1)
+    rot, zoomlevel = grid_search(ph_, bf_, 0, 0.905, 0.5, 0.1)
     bf_rz = zoom(trans.rotate(bf_, rot, mode="edge"),zoomlevel)
     shift_measured = phase_cross_correlation(ph_, bf_rz, upsample_factor=10, normalization=None)[0]
     shift_vector = (shift_measured[0], shift_measured[1])
@@ -182,32 +184,6 @@ plt.figure('bf')
 plt.imshow(zoom(trans.rotate(bf_, 0, mode="edge"),0.92))
 plt.figure('ph')
 plt.imshow(ph_)
-#%%
-errors = np.zeros((11,11))
-zoomlevels = np.linspace(0.89,0.91,11)
-rotations = np.linspace(-0.5,0.5,11)
-
-for i, rotation in enumerate(rotations):
-    for j, zoomlevel in enumerate(zoomlevels):
-        bf__ = trans.rotate(bf_, rotation, mode="edge")
-        bf__ = zoom(bf__, zoomlevel)
-        shift_measured, error, phasediff = phase_cross_correlation(ph_, bf__, upsample_factor=10, normalization=None)
-        print(shift_measured)
-        errors[i,j] = error
-plt.imshow(errors)
-min_index = np.unravel_index(np.argmin(errors), errors.shape)
-print(rotations[min_index[0]])
-print(zoomlevels[min_index[1]])
-
-
-
-
-
-
-
-
-
-
 
 
 

@@ -53,7 +53,10 @@ def crop_image(image_array, crop_coords):
 def evaluate_phase_shift_error(image1: Image, image2: Image, rotation: float, zoomlevel: float) -> float:
     im = trans.rotate(image2, rotation, mode="edge")
     im = zoom(im, zoomlevel)
-    shift_measured, error, phasediff = phase_cross_correlation(image1, im, upsample_factor=10, normalization=None)
+    try:
+        shift_measured, error, phasediff = phase_cross_correlation(image1, im, upsample_factor=10, normalization=None)
+    except:
+        shift_measured, error, phasediff = phase_cross_correlation(image1, im, upsample_factor=10)
     return error
 
 def Open_Directory(directory, message):
