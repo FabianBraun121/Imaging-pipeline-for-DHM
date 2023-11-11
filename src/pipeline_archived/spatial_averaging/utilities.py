@@ -4,30 +4,135 @@ Created on Wed Mar  8 14:45:14 2023
 
 @author: SWW-Bc20
 """
-import os
 import sys
-import numpy as np
-import time
-import numpy.typing as npt
-import cv2
-import subprocess
-import pyautogui
-import psutil
-from typing import Tuple
-from pathlib import Path
-from sklearn.preprocessing import PolynomialFeatures
-from skimage.registration import phase_cross_correlation
-import ctypes
-import skimage.transform as trans
-from scipy import ndimage
-from  pyKoalaRemote import client
 # Add Koala remote librairies to Path
 sys.path.append(r'C:\Program Files\LynceeTec\Koala\Remote\Remote Libraries\x64')
+import os
+from  pyKoalaRemote import client
+import skimage.restoration as skir
+import numpy.ma as ma
+import numpy as np
+import numpy.typing as npt
+import subprocess
+import time
+import pyautogui
+import cv2
+import psutil
+import skimage.transform as trans
+from scipy import ndimage
+from skimage.registration import phase_cross_correlation
+from PyQt5.QtWidgets import QFileDialog
+from typing import Tuple, List
+
+sys.path.append("..")
+import config as cfg
 
 Image = npt.NDArray[np.float32]
-CplxImage = npt.NDArray[np.complex64]
-Mask = npt.NDArray[np.uint8]
 Matrix = np.ndarray
+
+def connect_to_remote_koala(ConfigNumber):
+    # Define KoalaRemoteClient host
+    host = client.pyKoalaRemoteClient()
+    #Ask IP address
+    IP = 'localhost'
+    # Log on Koala - default to admin/admin combo
+    host.Connect(IP)
+    host.Login('admin')
+    # Open config
+    host.OpenConfig(ConfigNumber)
+    host.OpenPhaseWin()
+    host.OpenIntensityWin()
+    host.OpenHoloWin()
+    return host
+
+def crop_image(image_array, crop_coords):
+    # Extract the crop coordinates
+    ymin, ymax = crop_coords[0][0], crop_coords[0][1]
+    xmin, xmax = crop_coords[1][0], crop_coords[1][1]
+    
+    return image_array[ymin:ymax, xmin:xmax]
+
+def evaluate_phase_shift_error(image1: Image, image2: Image, rotation: float, zoomlevel: float) -> float:
+    im = trans.rotate(image2, rotation, mode="edge")
+    im = zoom(im, zoomlevel)
+    try:
+        shift_measured, error, phasediff = phase_cross_correlation(image1, im, upsample_factor=10, normalization=None)
+    except:
+        shift_measured, error, phasediff = phase_cross_correlation(image1, im, upsample_factor=10)
+    return error
+
+def Open_Directory(directory, message):
+    fname = QFileDialog.getExistingDirectory(None, message, directory, QFileDialog.ShowDirsOnly)
+    return fname
+
+def get_result_unwrap(phase, mask=None):
+        ph_m = ma.array(phase, mask=mask)
+        return np.array(skir.unwrap_phase(ph_m))
+    
+def get_masks_corners(mask):
+    non_zero_indices = np.nonzero(mask)
+    ymin, ymax = int(np.min(non_zero_indices[0])), int(np.max(non_zero_indices[0])+1)
+    xmin, xmax = int(np.min(non_zero_indices[1])), int(np.max(non_zero_indices[1])+1)
+    return ((ymin, ymax), (xmin, xmax))
+
+def is_koala_running():
+    for proc in psutil.process_iter(['name', 'exe']):
+        if proc.info['name'] == 'Koala.exe' and proc.info['exe'] == r'C:\Program Files\LynceeTec\Koala\Koala.exe':
+            return True
+    return False
+    
+def logout_login_koala():
+    cfg.KOALA_HOST.Logout()
+    time.sleep(0.1)
+    cfg.KOALA_HOST.Connect('localhost')
+    cfg.KOALA_HOST.Login('admin')
+    cfg.KOALA_HOST.OpenConfig(cfg.koala_config_nr)
+    cfg.KOALA_HOST.OpenPhaseWin()
+    cfg.KOALA_HOST.OpenIntensityWin()
+    cfg.KOALA_HOST.OpenHoloWin()
+
+def open_koala():
+    wd = os.getcwd()
+    os.chdir(r"C:\Program Files\LynceeTec\Koala")
+    subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
+    time.sleep(4)
+    pyautogui.typewrite('admin')
+    pyautogui.press('tab')
+    pyautogui.typewrite('admin')
+    pyautogui.press('enter')
+    time.sleep(4)
+    os.chdir(wd)
+    screenshot = pyautogui.screenshot()
+    remote_log = cv2.imread(r'spatial_averaging/images/remote_log_icon.png')
+    remote_log_pos = find_image_position(screenshot, remote_log)
+    pyautogui.click(remote_log_pos)
+
+def find_image_position(screenshot, image, threshold=0.95):
+    """
+    Finds the position of a given image in a given screenshot using template matching.
+    Args:
+        screenshot: A PIL Image object of the screenshot.
+        image: A PIL Image object of the image to be located in the screenshot.
+        threshold: A float indicating the threshold above which the match is considered valid (default: 0.95).
+    Returns:
+        A tuple of two integers representing the (x, y) coordinates of the center of the image in the screenshot.
+        If the image is not found, returns None.
+    """
+    screenshot_array = np.array(screenshot)
+    image_array = np.array(image)
+    h, w = image_array.shape[:2]
+
+    match = cv2.matchTemplate(screenshot_array, image_array, cv2.TM_CCOEFF_NORMED)
+    # Find the position of the best match in the match matrix
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(match)
+    if max_val<=threshold:
+        return None
+    
+    # Get the center coordinates of the best match
+    center_x = int(max_loc[0] + w/2)
+    center_y = int(max_loc[1] + h/2)
+    
+    return center_x, center_y
 
 def gradient_squared(image: Image) -> Image:
     grad_x = ndimage.sobel(image, axis=0)
@@ -77,14 +182,30 @@ def grid_search_2d(
             y_start, y_end = min_y - y_length/2, min_y + y_length/2
     return min_x, min_y
 
-def evaluate_phase_shift_error(image1: Image, image2: Image, rotation: float, zoomlevel: float) -> float:
-    im = trans.rotate(image2, rotation, mode="edge")
-    im = zoom(im, zoomlevel)
+def shut_down_restart_koala():
+    cfg.KOALA_HOST.KoalaShutDown()
+    time.sleep(1)
+    open_koala()
+    cfg.KOALA_HOST = connect_to_remote_koala(cfg.koala_config_nr)
+    
+def start_koala():
+    # Open Koala and load Configurations
+    if not is_koala_running():
+        open_koala()
+    
     try:
-        shift_measured, error, phasediff = phase_cross_correlation(image1, im, upsample_factor=10, normalization=None)
+        cfg.KOALA_HOST.OpenPhaseWin()
     except:
-        shift_measured, error, phasediff = phase_cross_correlation(image1, im, upsample_factor=10)
-    return error
+        cfg.KOALA_HOST = None
+    if cfg.KOALA_HOST is None:
+        cfg.KOALA_HOST = client.pyKoalaRemoteClient()
+        cfg.KOALA_HOST.Connect('localhost')
+        cfg.KOALA_HOST.Login('admin')
+    
+    cfg.KOALA_HOST.OpenConfig(cfg.koala_config_nr)
+    cfg.KOALA_HOST.OpenPhaseWin()
+    cfg.KOALA_HOST.OpenIntensityWin()
+    cfg.KOALA_HOST.OpenHoloWin()
 
 def zoom(I: Image, zoomlevel: float) -> Image:
     oldshape = I.shape
@@ -105,6 +226,8 @@ def zoom(I: Image, zoomlevel: float) -> Image:
         )
         I = I[i0[0] : (i0[0] + oldshape[0]), i0[1] : (i0[1] + oldshape[1])]
         return I
+    
+
 
 class PolynomialPlaneSubtractor:
     _image_shape = None
@@ -178,141 +301,4 @@ class PolynomialPlaneSubtractor:
         cls._polynomial_degree = polynomial_degree
         cls._X = X
         cls._X_pseudoinverse = np.dot(np.linalg.inv(np.dot(X.transpose(), X)), X.transpose())
-
-def is_koala_running():
-    for proc in psutil.process_iter(['name', 'exe']):
-        if proc.info['name'] == 'Koala.exe' and proc.info['exe'] == r'C:\Program Files\LynceeTec\Koala\Koala.exe':
-            return True
-    return False
-
-def open_koala():
-    wd = os.getcwd()
-    os.chdir(r"C:\Program Files\LynceeTec\Koala")
-    subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
-    time.sleep(4)
-    pyautogui.typewrite('admin')
-    pyautogui.press('tab')
-    pyautogui.typewrite('admin')
-    pyautogui.press('enter')
-    time.sleep(4)
-    os.chdir(wd)
-    screenshot = pyautogui.screenshot()
-    remote_log = cv2.imread(r'spatial_averaging/images/remote_log_icon.png')
-    remote_log_pos = find_image_position(screenshot, remote_log)
-    pyautogui.click(remote_log_pos)
-
-def find_image_position(screenshot, image, threshold=0.95):
-    """
-    Finds the position of a given image in a given screenshot using template matching.
-    Args:
-        screenshot: A PIL Image object of the screenshot.
-        image: A PIL Image object of the image to be located in the screenshot.
-        threshold: A float indicating the threshold above which the match is considered valid (default: 0.95).
-    Returns:
-        A tuple of two integers representing the (x, y) coordinates of the center of the image in the screenshot.
-        If the image is not found, returns None.
-    """
-    screenshot_array = np.array(screenshot)
-    image_array = np.array(image)
-    h, w = image_array.shape[:2]
-
-    match = cv2.matchTemplate(screenshot_array, image_array, cv2.TM_CCOEFF_NORMED)
-    # Find the position of the best match in the match matrix
-    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(match)
-    if max_val<=threshold:
-        return None
     
-    # Get the center coordinates of the best match
-    center_x = int(max_loc[0] + w/2)
-    center_y = int(max_loc[1] + h/2)
-    
-    return center_x, center_y
-
-def is_screen_active():
-    user32 = ctypes.windll.user32
-    return user32.GetForegroundWindow() != 0
-    
-class Koala:
-    _host = None
-    _config_number = None
-    _open_holo = None
-    _evaluation_counter = 0
-    
-    @classmethod
-    def connect(cls, config_number: int = None):
-        if not is_koala_running():
-            open_koala()
-        try:
-            cls._host.OpenPhaseWin()
-        except:
-            cls._host = None
-        if cls._host is None:
-            host = client.pyKoalaRemoteClient()
-            host.Connect('localhost')
-            host.Login('admin')
-            cls._host = host
-        
-        if config_number is not None:
-            cls._host.OpenConfig(config_number)
-            cls._config_number = config_number
-        cls._host.OpenPhaseWin()
-        cls._host.OpenIntensityWin()
-        cls._host.OpenHoloWin()
-    
-    @classmethod
-    def shut_down_restart(cls):
-        assert cls._host is not None, "Koala is not connected"
-        cls._host.KoalaShutDown()
-        cls._host = None
-        cls._open_holo = None
-        cls._evaluation_counter = 0
-        time.sleep(1)
-        open_koala()
-        cls.connect(cls._config_number)
-    
-    @classmethod
-    def load_hologram(cls, holo_fname):
-        assert cls._host is not None, "Koala is not connected"
-        assert isinstance(holo_fname, (str, Path)) and (str(holo_fname).endswith(".tif") or str(holo_fname).endswith(".TIF")), "Invalid filename"
-        
-        # shortest time would be 1826, assumed that restarting takes 10 seconds and the time increase is 0.006ms per evaluation.
-        # parameters have been experimentally shown. Minimum calculated with sqrt((2*reset_time)/time_increase)
-        if cls._evaluation_counter >= 2000 and is_screen_active():
-            cls.shut_down_restart()
-        
-        if cls._open_holo != str(holo_fname):
-            cls._host.LoadHolo(str(holo_fname),1)
-            cls._host.SetUnwrap2DState(True)
-            cls._open_holo = str(holo_fname)
-        
-    @classmethod
-    def set_reconstruction_distance(cls, distance):
-        assert cls._host is not None, "Koala is not connected"
-        assert -45 <= distance <= 45, "Number is not in the valid range [-45, 45]"
-
-        cls._host.SetRecDistCM(distance)
-        cls._host.OnDistanceChange()
-        cls._evaluation_counter += 1
-      
-    @classmethod
-    def get_phase_image(cls):
-        return cls._host.GetPhase32fImage()
-    
-    @classmethod
-    def get_intensity_image(cls):
-        return cls._host.GetIntensity32fImage()
-
-
-class ValueTracker:
-    def __init__(self):
-        self.value = None
-        self.value_list = []
-        self.average_at = 10
-    
-    def append_value(self, value):
-        self.value_list.append(value)
-        if len(self.value_list) == self.average_at:
-            self.calculate_average()
-    
-    def calculate_average(self):
-        pass  # Initialize in subclass

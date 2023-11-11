@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Mon Oct 30 12:36:56 2023
+Created on Mon Nov  6 14:15:52 2023
 
 @author: SWW-Bc20
 """
@@ -19,9 +19,9 @@ from delta.data import trainGenerator_seg
 delta_cfg.load_config(presets="2D")
 
 # Files:
-training_set = Path(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\delta_assets\trainingsets\2D\training\full_ph_segmentation')
+training_set = Path(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\delta_assets\trainingsets\2D\training\bf_segmentation_set')
 base_unet_path = Path(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\delta_assets\models_base_delta', 'unet_pads_seg.hdf5')
-save_unet = str(Path(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\delta_assets\models', 'unet_pads_full_ph_seg.hdf5'))
+save_unet = str(Path(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\delta_assets\models', 'unet_pads_bf_seg.hdf5'))
 
 
 # Training parameters:

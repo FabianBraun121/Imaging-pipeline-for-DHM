@@ -7,9 +7,13 @@ Created on Sun Jul 30 10:53:29 2023
 import sys
 import os
 from skimage.morphology import binary_dilation
+from skimage.segmentation import watershed
+from scipy.ndimage import distance_transform_edt
+import tensorflow as tf
 import numpy as np
 from typing import cast, List, Union, Dict, Optional, Any, Tuple
 from pathlib import Path
+import tifffile
 import delta
 import re
 
@@ -27,6 +31,7 @@ class Delta_process:
             base_dir: Union[str, Path],
             saving_dir: Union[str, Path] = None,
             restrict_positions: slice = None,
+            filenamesindexing: int = 1       
             ):
         """
         Parameters
@@ -53,8 +58,9 @@ class Delta_process:
         if saving_dir is not None:
             self.saving_dir: Path = Path(saving_dir)
         else:
-            self.saving_dir = None
-    
+            self.saving_dir = self.base_dir
+        self.filenamesindexing = filenamesindexing
+        
     def _positions(self) -> List[str]:
         "returns a list of th positions processed."
         positions = [d for d in os.listdir(self.base_dir) if os.path.isdir(Path(self.base_dir,d))]
@@ -74,81 +80,91 @@ class Delta_process:
                 saving_dir_pos = Path(self.saving_dir, pos_name)
             else:
                 saving_dir_pos = None
-            self._rename_to_delta(pos_dir)
-            xpreader = delta.utils.xpreader(pos_dir)
-            pipe = delta.pipeline.Pipeline(xpreader, resfolder=saving_dir_pos)
-            pipe.process(clear=False)
             
-            frames = [f for f in range(xpreader.timepoints)]
-            features = ("length", "width", "area", "perimeter", "edges", "fluo1")
+            # core sgementation and tracking
+            core_models = dict()
+            core_dir = str(pos_dir) + os.sep + 'bacteria_cores'
+            if not os.path.exists(core_dir): 
+                os.makedirs(core_dir) 
+            if cfg.delta_bacteria_core == "BF":
+                self._save_bf_as_delta_compatible(str(pos_dir), core_dir)
+                core_models["segmentation"] = tf.keras.models.load_model(cfg.model_file_bf_core_seg, compile=False)
+                core_models["tracking"] = tf.keras.models.load_model(cfg.model_file_bf_track, compile=False)
+            if cfg.delta_bacteria_core == "PH":
+                self._save_ph_as_delta_compatible(str(pos_dir), core_dir)
+                core_models["segmentation"] = tf.keras.models.load_model(cfg.model_file_ph_core_seg, compile=False)
+                core_models["tracking"] = tf.keras.models.load_model(cfg.model_file_ph_track, compile=False)
+            core_xpreader = delta.utils.xpreader(core_dir)
+            delta_core_position = delta.pipeline.Position(0, core_xpreader, core_models, drift_correction=False, crop_windows=True)
+            frames = [f for f in range(core_xpreader.timepoints)]
+            delta_core_position.preprocess(rotation_correction=False)
+            delta_core_position.segment(frames=frames)
+            delta_core_position.track(frames=frames)
+            # features needs to be processed so label_stack gets claculated
+            delta_core_position.features(frames=frames)
+            delta_core_position.save(filename= Path(core_dir, f"Position{int(pos_name):05d}"),frames=frames)
             
-            for f in frames:
-                pipe.positions[0].rois[0].label_stack[f] = self._dilute_cores_to_cells(pipe.positions[0].rois[0].label_stack[f],
-                                                                                       pipe.positions[0].rois[0].img_stack[f],
-                                                                                       cfg.dilute_cells)
+            # watershed to the full bacteria
+            full_bacteria_models = dict()
+            full_bacteria_dir = str(pos_dir) + os.sep + 'full_bacteria'
+            if not os.path.exists(full_bacteria_dir): 
+                os.makedirs(full_bacteria_dir)
+            self._save_ph_as_delta_compatible(str(pos_dir), full_bacteria_dir)
+            full_bacteria_models["segmentation"] = tf.keras.models.load_model(cfg.model_file_ph_full_seg, compile=False)
+            full_bacteria_xpreader = delta.utils.xpreader(full_bacteria_dir)
+            delta_full_position = delta.pipeline.Position(0, full_bacteria_xpreader, full_bacteria_models, drift_correction=False, crop_windows=True)
+            delta_full_position.preprocess(rotation_correction=False)
+            delta_full_position.segment(frames=frames)
+            
+            
+            delta_core_position.rois[0].label_stack = self._watershed_labeled_cores_to_bacteria_outsides(delta_core_position.rois[0].label_stack,
+                                                                                                         delta_full_position.rois[0].seg_stack)
+            delta_core_position.rois[0].img_stack = delta_full_position.rois[0].img_stack
+            delta_core_position.reader = delta_full_position.reader
+            
             # Extract features:
-            pipe.positions[0].features(frames=frames, features=features)
+            features = ("length", "width", "area", "perimeter", "edges")
+            delta_core_position.features(frames=frames, features=features)
             
-            for cell in pipe.positions[0].rois[0].lineage.cells:
-                cell['mean_opl'] = list((np.array(cell['fluo1'])/65535*np.pi-np.pi/2) * cfg.hconv*1e9) # mean_opl in nanometers
-                cell['integrated_opl'] = list((np.array(cell['mean_opl']) * 1e-3)  * (np.array(cell['area']) * (cfg.px_size*1e6)**2)) #opl in micro meters cubed
+            for cell in delta_core_position.rois[0].lineage.cells:
+                cell['mean_opl'] = []
+                for frame in cell['frames']:
+                    # cells are marked 1 higher in the label stack, because cell id starts with 0 and 0 is the background in the label stack
+                    mask = delta_core_position.rois[0].label_stack[frame] == cell['id'] + 1
+                    cell['mean_opl'].append((np.mean(delta_core_position.rois[0].img_stack[frame][mask])/65535*np.pi-np.pi/2) * cfg.hconv)
+                cell['integrated_opl'] = list((np.array(cell['mean_opl']) * 1e-3)  * (np.array(cell['area']) * (cfg.px_size)**2)) #opl in micro meters cubed
                 cell['mass'] = list((1 / 0.18) * np.array(cell['integrated_opl'])) # pico gram
             
+            delta_outputs_dir = str(pos_dir) + os.sep + 'delta_outputs'
+            if not os.path.exists(delta_outputs_dir): 
+                os.makedirs(delta_outputs_dir)
             # Save to disk and clear memory:
-            pipe.positions[0].save(
-                filename= Path(pipe.resfolder, f"Position{int(pos_name):05d}"),
-                frames=frames,
-                save_format=pipe.save_format,
-            )
+            delta_core_position.save(filename= Path(delta_outputs_dir, f"Position{int(pos_name):05d}"),frames=frames)
             
-            [os.remove(Path(pipe.resfolder,filename)) for filename in os.listdir(pipe.resfolder) if filename.startswith("Position000000")]
-            
-            del pipe
+            delta_full_position.clear()
+            delta_core_position.clear()
     
-    def _dilute_cells(self, labelsIn, n):
-        "dilutes the cells n times"
-        labels = labelsIn.copy()
-        for i in range(n):
-            for cell_label in np.unique(labels):
-                # Skip the background region (value of 0)
-                if cell_label == 0:
-                    continue
-                
-                labels_mask = (labels == cell_label)
-                dilated_mask = binary_dilation(labels_mask)
-                free_dilated_mask = (labels == 0) & dilated_mask
-                labels[free_dilated_mask] = cell_label
-        return labels
+    def _watershed_labeled_cores_to_bacteria_outsides(self, label_stack, seg_stack):
+        label_stack_out = []
+        for i in range(len(label_stack)):
+            distance = distance_transform_edt(label_stack[i])
+            # label_stack[i] = watershed(-distance, label_stack[i], mask=seg_stack[i])
+            label_stack_out.append(watershed(-distance, label_stack[i], mask=seg_stack[i]))
+        return label_stack_out
     
-    def _dilute_cores_to_cells(self, labelsIn, img, n):
-        "dilutes the core to a cell, first three dilutions are only on high image pixel values. Dilutions after are fixed."
-        labels = labelsIn.copy()
-        img_cut_off = np.percentile(img, 95)
-        for i in range(n):
-            for cell_label in np.unique(labels):
-                # Skip the background region (value of 0)
-                if cell_label == 0:
-                    continue
-                
-                mask = (labels == cell_label)
-                dilated_mask = binary_dilation(mask)
-                boundary = dilated_mask & ~mask
-                boundary = (labels == 0) & boundary
-                if i<3:
-                    boundary = (img_cut_off < img) & boundary
-                labels[boundary] = cell_label
-        return labels
+    def _save_ph_as_delta_compatible(self, pos_dir, saving_pos_dir):
+        ph_fnames = [ph for ph in os.listdir(pos_dir) if 'PH' in ph]
+        for i, ph_fname in enumerate(ph_fnames):
+            ph_image = tifffile.imread(pos_dir + os.sep + ph_fname)
+            ph_scaled = (((ph_image + np.pi/2) / np.pi) * 65535).astype(np.uint16)
+            fname = saving_pos_dir + os.sep + f"pos{str(self.filenamesindexing).zfill(5)}cha{self.filenamesindexing}fra{str(i+self.filenamesindexing).zfill(5)}.tif"
+            tifffile.imwrite(fname, ph_scaled)
     
-    def _rename_from_delta(self, pos_dir):
-        "images in a folder of Delta with the same position are always number 1. Function changes to true position name."
-        for old_filename in os.listdir(pos_dir):
-            new_filename = re.sub('pos00001', f'pos{pos_dir.name}', old_filename)
-            os.rename(Path(pos_dir,old_filename), Path(pos_dir,new_filename))
-    
-    def _rename_to_delta(self, pos_dir):
-        "change pos name to pos00001"
-        for old_filename in os.listdir(pos_dir):
-            new_filename = re.sub(r'pos(\d+)', 'pos00001', old_filename)
-            os.rename(Path(pos_dir,old_filename), Path(pos_dir,new_filename))
-
+    def _save_bf_as_delta_compatible(self, pos_dir, saving_pos_dir):
+        bf_fnames = [bf for bf in os.listdir(pos_dir) if 'BF' in bf]
+        for i, bf_fname in enumerate(bf_fnames):
+            bf_image = tifffile.imread(pos_dir + os.sep + bf_fname)
+            bf_scaled = ((bf_image - bf_image.min())/(bf_image.max() - bf_image.min()) * 65535).astype(np.uint16)
+            fname = saving_pos_dir + os.sep + f"pos{str(self.filenamesindexing).zfill(5)}cha{self.filenamesindexing}fra{str(i+self.filenamesindexing).zfill(5)}.tif"
+            tifffile.imwrite(fname, bf_scaled)
 

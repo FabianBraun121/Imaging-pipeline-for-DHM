@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Oct 25 21:49:55 2023
+Created on Thu Nov  2 10:04:26 2023
 
 @author: SWW-Bc20
 """
@@ -15,9 +15,15 @@ import numpy as np
 import time
 from pathlib import Path
 from sklearn.preprocessing import PolynomialFeatures
-from utilities import is_koala_running, open_koala
 from scipy.ndimage import gaussian_filter, label, find_objects, generate_binary_structure, center_of_mass
 from skimage.measure import regionprops
+import pandas as pd
+import scipy.io
+import pyautogui
+import subprocess
+import cv2
+import psutil
+
 
 
 Image = np.ndarray
@@ -96,10 +102,60 @@ class PolynomialPlaneSubtractor:
         cls._X = X
         cls._X_pseudoinverse = np.dot(np.linalg.inv(np.dot(X.transpose(), X)), X.transpose())
 
+def find_image_position(screenshot, image, threshold=0.95):
+    """
+    Finds the position of a given image in a given screenshot using template matching.
+    Args:
+        screenshot: A PIL Image object of the screenshot.
+        image: A PIL Image object of the image to be located in the screenshot.
+        threshold: A float indicating the threshold above which the match is considered valid (default: 0.95).
+    Returns:
+        A tuple of two integers representing the (x, y) coordinates of the center of the image in the screenshot.
+        If the image is not found, returns None.
+    """
+    screenshot_array = np.array(screenshot)
+    image_array = np.array(image)
+    h, w = image_array.shape[:2]
+
+    match = cv2.matchTemplate(screenshot_array, image_array, cv2.TM_CCOEFF_NORMED)
+    # Find the position of the best match in the match matrix
+    min_val, max_val, min_loc, max_loc = cv2.minMaxLoc(match)
+    if max_val<=threshold:
+        return None
+    
+    # Get the center coordinates of the best match
+    center_x = int(max_loc[0] + w/2)
+    center_y = int(max_loc[1] + h/2)
+    
+    return center_x, center_y
+
+def is_koala_running():
+    for proc in psutil.process_iter(['name', 'exe']):
+        if proc.info['name'] == 'Koala.exe' and proc.info['exe'] == r'C:\Program Files\LynceeTec\Koala\Koala.exe':
+            return True
+    return False
+
+def open_koala():
+    wd = os.getcwd()
+    os.chdir(r"C:\Program Files\LynceeTec\Koala")
+    subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
+    time.sleep(4)
+    pyautogui.typewrite('admin')
+    pyautogui.press('tab')
+    pyautogui.typewrite('admin')
+    pyautogui.press('enter')
+    time.sleep(4)
+    os.chdir(wd)
+    screenshot = pyautogui.screenshot()
+    remote_log = cv2.imread(r'remote_log_icon.png')
+    remote_log_pos = find_image_position(screenshot, remote_log)
+    pyautogui.click(remote_log_pos)
+
 class Koala:
     _host = None
     _config_number = None
     _open_holo = None
+    _evaluation_counter = 0
     
     @classmethod
     def connect(cls, config_number: int = None):
@@ -115,7 +171,7 @@ class Koala:
             host.Login('admin')
             cls._host = host
         
-        if cls._config_number != config_number and config_number is not None:
+        if config_number is not None:
             cls._host.OpenConfig(config_number)
             cls._config_number = config_number
         cls._host.OpenPhaseWin()
@@ -126,6 +182,9 @@ class Koala:
     def shut_down_restart(cls):
         assert cls._host is not None, "Koala is not connected"
         cls._host.KoalaShutDown()
+        cls._host = None
+        cls._open_holo = None
+        cls._evaluation_counter = 0
         time.sleep(1)
         open_koala()
         cls.connect(cls._config_number)
@@ -134,6 +193,9 @@ class Koala:
     def load_hologram(cls, holo_fname):
         assert cls._host is not None, "Koala is not connected"
         assert isinstance(holo_fname, (str, Path)) and (str(holo_fname).endswith(".tif") or str(holo_fname).endswith(".TIF")), "Invalid filename"
+        
+        if cls._evaluation_counter >= 3600:
+            cls.shut_down_restart()
         
         if cls._open_holo != str(holo_fname):
             cls._host.LoadHolo(str(holo_fname),1)
@@ -147,6 +209,7 @@ class Koala:
 
         cls._host.SetRecDistCM(distance)
         cls._host.OnDistanceChange()
+        cls._evaluation_counter += 1
       
     @classmethod
     def get_phase_image(cls):
@@ -205,7 +268,6 @@ class ImageStackBuilder:
             image = PolynomialPlaneSubtractor.subtract_plane(image, polynomial_degree)
         return image
 
-#%%
 class Bacteria:
     
     def __init__(self, x: int, y: int, z: int, z_dist: float, mask: np.ndarray = None, area: int = None, circularity: float = None, mean_ph_dif: float = None):
@@ -276,233 +338,29 @@ class BacteriaFinder:
             bacterias.append(Bacteria(x, y, z, z_dist, mask[zs], area, circularity, mean_ph_dif))
         return bacterias
     
-    
-#%%
-import tifffile
-import matplotlib.pyplot as plt
-from matplotlib.widgets import Button
 
-class ImageViewer:
-    def __init__(self, image_stack, update_full_image=False):
-        self.image_stack = image_stack
-        self.current_index = 0
-        self.update_full_image = update_full_image
 
-        self.fig, self.ax = plt.subplots()
-        plt.subplots_adjust(bottom=0.2)
-
-        self.img = self.ax.imshow(self.image_stack[self.current_index])
-        self.ax.set_title(f'Image {self.current_index + 1}/{len(self.image_stack)}')
-
-        axprev = plt.axes([0.7, 0.05, 0.1, 0.075])
-        axnext = plt.axes([0.81, 0.05, 0.1, 0.075])
-        self.bnext = Button(axnext, 'Next')
-        self.bnext.on_clicked(self.next_image)
-        self.bprev = Button(axprev, 'Previous')
-        self.bprev.on_clicked(self.prev_image)
-
-        self.connect_key_events()
-
-    def connect_key_events(self):
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
-
-    def on_key(self, event):
-        if event.key == 'right':
-            self.next_image(None)
-        elif event.key == 'left':
-            self.prev_image(None)
-
-    def next_image(self, event):
-        self.current_index = (self.current_index + 1) % len(self.image_stack)
-        self.update_image()
-
-    def prev_image(self, event):
-        self.current_index = (self.current_index - 1) % len(self.image_stack)
-        self.update_image()
-
-    def update_image(self):
-        if self.update_full_image:
-            self.ax.imshow(self.image_stack[self.current_index])
-        else:
-            self.img.set_data(self.image_stack[self.current_index])
-        self.ax.set_title(f'Image {self.current_index + 1}/{len(self.image_stack)}')
-        self.fig.canvas.draw()
-        
-class ScatterSequence:
-    def __init__(self, obj_positions_in_time):
-        self.obj_positions_in_time = obj_positions_in_time
-        self.current_index = 0
-
-        self.fig = plt.figure()
-        self.ax = self.fig.add_subplot(111, projection='3d')
-        plt.subplots_adjust(bottom=0.2)
-
-        positions = self.obj_positions_in_time[self.current_index]
-        self.ax.scatter(positions[0], positions[1], positions[2])
-        self.ax.set_title(f'Image {self.current_index + 1}/{len(self.obj_positions_in_time)}')
-
-        axprev = plt.axes([0.7, 0.05, 0.1, 0.075])
-        axnext = plt.axes([0.81, 0.05, 0.1, 0.075])
-        self.bnext = Button(axnext, 'Next')
-        self.bnext.on_clicked(self.next_image)
-        self.bprev = Button(axprev, 'Previous')
-        self.bprev.on_clicked(self.prev_image)
-
-        self.connect_key_events()
-
-    def connect_key_events(self):
-        self.fig.canvas.mpl_connect('key_press_event', self.on_key)
-
-    def on_key(self, event):
-        if event.key == 'right':
-            self.next_image(None)
-        elif event.key == 'left':
-            self.prev_image(None)
-
-    def next_image(self, event):
-        self.current_index = (self.current_index + 1) % len(self.obj_positions_in_time)
-        self.update_image()
-
-    def prev_image(self, event):
-        self.current_index = (self.current_index - 1) % len(self.obj_positions_in_time)
-        self.update_image()
-
-    def update_image(self):
-        positions = self.obj_positions_in_time[self.current_index]
-        self.ax.scatter(positions[0], positions[1], positions[2])
-        self.ax.set_title(f'Image {self.current_index + 1}/{len(self.obj_positions_in_time)}')
-        self.fig.canvas.draw()
-
-#%%
-Koala.connect(281)
-fname = r'D:\data\Data_Richard\2023-10-27 14-17-18\00001_00001\Holograms\00000_holo.tif'
-distances = np.arange(-1.5,2.5,0.1)
-ph, amp = ImageStackBuilder.build_stack(fname, distances, amp_stack=True)
-#%%
-start = time.time()
-bacterias = BacteriaFinder(ph, distances).find_bacteria(lower_threshold = 0.17, upper_threshld  = 0.23, gaussian_blur_sigma=1, gaussian_blur_radius=3)
-print(time.time()-start)
-p = ph.copy()
-for bacteria in bacterias:
-    p[bacteria.z, bacteria.y-3:bacteria.y+3, bacteria.x-3:bacteria.x+3] = np.nan
-viewer = ImageViewer(p)
-plt.show()
-
-#%%
-masks = []
-for bacteria in bacterias:
-    masks.append(bacteria.mask)
-viewer = ImageViewer(masks,update_full_image=True)
-plt.show()
-#%%
-for i, ob in enumerate(objects[:5]):
-    plt.figure(f'{i}_mask')
-    plt.imshow(ob.mask)
-    plt.show()
-    plt.figure(f'{i}_image')
-    plt.imshow(ob.image)
-    plt.show()
-
-#%%
-# derivative
-viewer = ImageViewer((ph-np.roll(ph, 1, axis=0))[1:])
-plt.show()
-
-#%%
-# aligned derivative
-from skimage.registration import phase_cross_correlation
-from scipy import ndimage
-
-def aligned_change(ref, mov):
-    shift_measured, _, __ = phase_cross_correlation(ref, mov, upsample_factor=100)
-    mov = ndimage.shift(mov, shift=shift_measured, mode='constant')
-    return ref-mov
-
-p = np.zeros_like(ph)
-for i in range(p.shape[0]-1):
-    p[i] = aligned_change(ph[i], ph[i+1])
-
-viewer = ImageViewer(p[:,10:790,10:790])
-plt.show()
-#%%
-# aligned derivative stack
-pp = np.zeros_like(ph)
-for i in range(1, ph.shape[0]):
-    pp[i] = pp[i-1] + p[i]
-viewer = ImageViewer(pp[:,10:790,10:790])
-plt.show()
-
-#%%
 Koala.connect(281)
 base_dir = r'D:\data\Data_Richard\2023-10-27 14-17-18\00001_00001\Holograms'
-amp_stack = []
-ph_stack = []
-for i in range(10):
-    fname = base_dir + os.sep + f'{str(i+200).zfill(5)}_holo.tif'
-    distances = np.arange(-3,3,0.1)
-    ph, amp = ImageStackBuilder.build_stack(fname, distances, amp_stack=True)
-    ph_stack.append(ph)
-    amp_stack.append(amp)
-#%%
-ph_mean = np.mean(ph_stack, axis=0)
-amp_mean = np.mean(amp_stack, axis=0)
-#%%
-ph_mean = np.mean(ph_stack, axis=0)
-#%%
-viewer = ImageViewer(ph_mean)
-plt.show()
-#%%
-viewer = ImageViewer(np.array(ph_stack)[:,50])
-plt.show()
-#%%
-viewer = ImageViewer(np.median(ph_stack, axis=0))
-plt.show()
-#%%
+fnames = os.listdir(base_dir)
+distances = np.arange(-3,3,0.1)
+start_time = time.time()
 
+data = []
+for fname in fnames:
+    timestep = int(fname[:5])
+    ph, _ = ImageStackBuilder.build_stack(base_dir + os.sep + fname, distances)
+    bacterias = BacteriaFinder(ph, distances).find_bacteria(lower_threshold = 0.17, upper_threshld  = 0.23, gaussian_blur_sigma=1, gaussian_blur_radius=3)
+    for bacteria in bacterias:
+        row = {key: value for key, value in vars(bacteria).items() if key != 'mask'}
+        row['timestep'] = timestep
+        data.append(row)
 
+df = pd.DataFrame(data)
+end_time = time.time()
+duration = np.round(end_time-start_time,0)
+print(f'It took {duration//60} min {duration%60} s, {np.round(duration/len(fnames),1)} s per image')
 
-
-
-
-
-
-
-
-
-
-Koala.connect(280)
-fname = r'D:\data\20231020_hydrogel_3D\tif_holos\2023.10.20 15-28-58_00000_TO_00010\Holograms\00009_holo.tif'
-ph, _ = ImageStackBuilder.build_stack(fname, np.arange(-5,0.1,0.1))
-objects = ObjectFinder(ph, np.arange(-5,0.1,0.1)).find_objects()
-
-p = ph.copy()
-for obj in objects:
-    p[obj.z, obj.y-5:obj.y+5, obj.x-5:obj.x+5] = 0
-viewer = ImageViewer(ph)
-plt.show()
-
-for i, ob in enumerate(objects):
-    plt.figure(f'{i}_mask')
-    plt.imshow(ob.mask)
-    plt.show()
-    plt.figure(f'{i}_image')
-    plt.imshow(ob.image)
-    plt.show()
-
-#%%
-Koala.connect(280)
-sequence_dir = r'D:\data\20231020_hydrogel_3D\tif_holos\2023.10.20 15-28-58_00000_TO_00010\Holograms'
-names = os.listdir(sequence_dir)
-
-obj_positions_in_time = []
-for name in names:
-    holo_fname = sequence_dir + os.sep + name
-    ph, _ = ImageStackBuilder.build_stack(holo_fname, np.arange(-5,0.1,0.1))
-    objects = ObjectFinder(ph, np.arange(-5,0.1,0.1)).find_objects()
-    x = [obj.x for obj in objects]
-    y = [obj.y for obj in objects]
-    z = [obj.z for obj in objects]
-    obj_positions = (x,y,z)
-    obj_positions_in_time.append(obj_positions)
-    
-ScatterSequence(obj_positions_in_time)
+data_dict = {'bacterias': df.to_dict(orient='list')}
+scipy.io.savemat(r'D:\data\Data_Richard\2023-10-27 14-17-18\bacteria_data.mat', data_dict)
+df.to_csv(r'D:\data\Data_Richard\2023-10-27 14-17-18\bacteria_data.csv', index=False)

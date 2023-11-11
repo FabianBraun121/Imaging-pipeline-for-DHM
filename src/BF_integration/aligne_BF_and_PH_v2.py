@@ -21,7 +21,7 @@ from scipy import ndimage
 def zoom(I, zoomlevel):
     oldshape = I.shape
     I_zoomed = np.zeros_like(I)
-    I = trans.rescale(I, zoomlevel, mode="edge")
+    I = trans.rescale(I, zoomlevel, mode="edge", preserve_range=True)
     if zoomlevel<1:
         i0 = (
             round(oldshape[0]/2 - I.shape[0]/2),
@@ -91,14 +91,14 @@ def gradient_squared(image):
     grad_y = ndimage.sobel(image, axis=1)
     return (grad_x**2+grad_y**2)
 
-base_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\data\brightfield\20230905-1643'
+base_path = r'D:\data\brightfield\20230905-1643'
 save_base_path = base_path + os.sep + 'aligned_images'
 if not os.path.exists(save_base_path):
     os.makedirs(save_base_path)
 bf_base_path = base_path + os.sep + '20230905-1643 BF'
 ph_base_path = base_path + os.sep + '20230905-1643 phase averages'
 postitions = os.listdir(bf_base_path)
-for postition in postitions:
+for postition in postitions[:10]:
     bf_positions_path = bf_base_path + os.sep + postition
     ph_positions_path = ph_base_path + os.sep + postition
     timesteps = [int(''.join(filter(str.isdigit, s))) for s in os.listdir(ph_positions_path)]
@@ -109,14 +109,14 @@ for postition in postitions:
     rots = []
     zooms = []
     shift_vectors = []
-    for timestep in timesteps:
+    for timestep in timesteps[:30]:
         start = time.time()
         bf_fname = bf_positions_path + os.sep + f'{str(timestep).zfill(5)}_BF.tif'
         ph_fname = ph_positions_path + os.sep + f'ph_timestep_{str(timestep).zfill(5)}.bin'
         
         bf = tifffile.imread(bf_fname)[512:1536,512:1536]
         bf = np.fliplr(bf)
-        bf = trans.rotate(bf, -90, mode="edge")
+        bf = trans.rotate(bf, -90, mode="edge", preserve_range=True)
         ph, _ = binkoala.read_mat_bin(ph_fname)
         ph_ = np.zeros(bf.shape)
         ph_[:ph.shape[0], :ph.shape[1]] = ph
@@ -128,7 +128,7 @@ for postition in postitions:
         shift_measured = phase_cross_correlation(ph_, bf_rz, upsample_factor=10)[0]
         shift_vector = (shift_measured[0], shift_measured[1])
         
-        bf_out = ndimage.shift(zoom(trans.rotate(bf, rot, mode="edge"),zoomlevel), shift_vector)[:ph.shape[0], :ph.shape[1]]
+        bf_out = ndimage.shift(zoom(trans.rotate(bf, rot, mode="edge", preserve_range=True),zoomlevel), shift_vector)[:ph.shape[0], :ph.shape[1]]
         fname = save_folder_path + os.sep + f'{str(timestep).zfill(5)}_BF.tif'
         tifffile.imwrite(fname, bf_out)
         
