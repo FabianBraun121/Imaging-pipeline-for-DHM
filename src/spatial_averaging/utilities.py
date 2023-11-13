@@ -17,6 +17,7 @@ from typing import Tuple
 from pathlib import Path
 from sklearn.preprocessing import PolynomialFeatures
 from skimage.registration import phase_cross_correlation
+from PyQt5.QtWidgets import QFileDialog
 import ctypes
 import skimage.transform as trans
 from scipy import ndimage
@@ -105,6 +106,12 @@ def zoom(I: Image, zoomlevel: float) -> Image:
         )
         I = I[i0[0] : (i0[0] + oldshape[0]), i0[1] : (i0[1] + oldshape[1])]
         return I
+    
+
+def Open_Directory(directory, message):
+    fname = QFileDialog.getExistingDirectory(None, message, directory, QFileDialog.ShowDirsOnly)
+    return fname
+
 
 class PolynomialPlaneSubtractor:
     _image_shape = None

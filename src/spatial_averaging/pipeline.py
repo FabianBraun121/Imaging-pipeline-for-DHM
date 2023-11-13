@@ -445,7 +445,7 @@ class Pipeline:
         
     
     def _get_last_phase_image(self, po: Position, save_ph_pos: str, t: int):
-        if cfg.save_in_same_folder:
+        if cfg.save_as_bulk:
             fname = f'{save_ph_pos}//pos_{po.pos_name}_timestep_{str(t).zfill(5)}_PH{cfg.save_format}'
         else:
             fname = f'{save_ph_pos}//{str(t).zfill(5)}_PH{cfg.save_format}'
@@ -502,7 +502,7 @@ class Pipeline:
                     self.data_file_path = self._write_data_file()
                     self.image_settings_updated = True
                 
-                if cfg.save_in_same_folder:
+                if cfg.save_as_bulk:
                     save_ph_pos = str(self.saving_dir) + os.sep + 'PH'
                 else:
                     save_ph_pos = str(self.saving_dir) + os.sep + po.pos_name
@@ -555,7 +555,7 @@ class Pipeline:
         image = ndimage.shift(zoom(trans.rotate(image, rot, mode="edge"),zoomlevel), tuple(shift_measured))
         image = image[:phase_image.shape[0], :phase_image.shape[1]]
         
-        if cfg.save_in_same_folder:
+        if cfg.save_as_bulk:
             save_folder = f'{str(self.saving_dir)}//{image_type}'
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder)
@@ -566,7 +566,7 @@ class Pipeline:
     
     def _save_image(self, phase_image: Image, po: Position, save_ph_pos: str, t: int):
         "saves the images in the selected format. Either .tif or .bin"
-        if cfg.save_in_same_folder:
+        if cfg.save_as_bulk:
             fname = f'{save_ph_pos}//pos_{po.pos_name}_timestep_{str(t).zfill(5)}_PH{cfg.save_format}'
         else:
             fname = f'{save_ph_pos}//{str(t).zfill(5)}_PH{cfg.save_format}'

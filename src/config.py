@@ -52,7 +52,7 @@ image_cut: Tuple[Tuple[int]] = ((10, 710), (90, 790))
 "Edges are not useable because of the spatial averaging. Image are cropped"
 save_format: str = ".tif"
 ".tif, .bin or delta. If delta is selected images names are selected that work with delta. BF images are always saved as .tif"
-save_in_same_folder: bool = False
+save_as_bulk: bool = False
 
 delta_assets_path: Path = Path(Path(BASE_PATH).parent, 'data', 'delta_assets')
 
@@ -86,16 +86,17 @@ pc_zoom_search_length: float = 0.2
 "length of the zoom search"
 
 delta_bacteria_core = "BF"
-
+"Determines the image type which is used for bacteria segemntation."
 model_file_bf_core_seg: Path = Path(delta_assets_path, 'models', 'unet_pads_bf_core_seg.hdf5')
-
+"Unet for bf core segmenation"
 model_file_ph_core_seg: Path = Path(delta_assets_path, 'models', 'unet_pads_ph_core_seg.hdf5')
-
+"Unet for ph core segmentation"
 model_file_bf_track: Path = Path(delta_assets_path, 'models', 'unet_pads_track.hdf5')
-
+"Unet for bf tracking. Delta base tracking model works better, then tuned net -> base net"
 model_file_ph_track: Path = Path(delta_assets_path, 'models', 'unet_pads_track.hdf5')
-
+"Unet for ph tracking. Delta base tracking model works better, then tuned net -> base net"
 model_file_ph_full_seg: Path = Path(delta_assets_path, 'models', 'unet_pads_full_ph_seg.hdf5')
+"Full segmentaion of bacteria vs background. Used as mask for watershedding."
 
 def load_config(koala_config_nrIn: int, nfevaluationsIn : Tuple[int] = None,
                 focus_methodIn: Tuple[str] = None, reconstruction_distance_lowIn: float = None,

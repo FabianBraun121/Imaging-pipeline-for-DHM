@@ -16,8 +16,8 @@ koala_config_nr = 279
 restrict_positions =  None # slice(0,2)   # slice
 restrict_timesteps = None #range(0, 100, 25) # range
 select_recon_rectangle = True
-# base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
-base_dir = r'D:\data\brightfield\20231018_ecoli_EZ\20231018_1600_EZ_Culture1'
+base_dir = sa.utilities.Open_Directory(r'Q:\SomethingFun' , "Open a scanning directory")
+# base_dir = r'D:\data\brightfield\20231018_ecoli_EZ\20231018_1600_EZ_Culture1'
 
 ################# spatial averaging ####################################
 config.load_config(koala_config_nrIn=koala_config_nr, save_formatIn='.tif', save_in_same_folderIn=False)
@@ -27,5 +27,5 @@ if select_recon_rectangle:
 pipe.process()
 #%%
 # pipe_delta = st.delta_process.Delta_process(pipe.saving_dir, restrict_positions=restrict_positions)
-pipe_delta = st.delta_process2.Delta_process(r'D:\data\brightfield\20230905-1643\test_delta_tracking')
+pipe_delta = st.delta_process.Delta_process(r'D:\data\brightfield\20230905-1643\test_delta_tracking')
 pipe_delta.process()

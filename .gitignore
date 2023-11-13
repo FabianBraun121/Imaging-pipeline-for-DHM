@@ -152,6 +152,7 @@ cython_debug/
 #.idea/
 
 # Manual addition
-data/
+delta_assets*
+Graphes_Images/data/
 *.npy
 *.hdf5
