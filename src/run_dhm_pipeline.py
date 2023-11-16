@@ -10,7 +10,7 @@ os.chdir(os.path.dirname(__file__))
 import spatial_averaging as sa
 import segmentation_tracking as st
 import config
-
+#%%
 
 koala_config_nr = 279
 restrict_positions =  None # slice(0,2)   # slice

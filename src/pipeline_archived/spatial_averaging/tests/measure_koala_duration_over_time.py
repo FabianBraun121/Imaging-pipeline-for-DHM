@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import time
 import random
 from pyKoalaRemote import client
-os.chdir(r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\src\spatial_averaging\tests')
+os.chdir(os.path.dirname(__file__))
 
 save_path = r'C:\Users\SWW-Bc20\Documents\GitHub\Imaging-pipeline-for-DHM\tests\spatial_averaging\measure_koala_duration_over_time'
 if not os.path.exists(save_path):
@@ -30,7 +30,7 @@ host.OpenHoloWin()
 #%%
 
 num_images = 1000
-num_evaluations_per_image = 100
+num_evaluations_per_image = 10
 duration = np.zeros(num_images)
 holograms = [ fname for fname in os.listdir(save_path) if fname.endswith('.tif')]
 
@@ -49,14 +49,14 @@ for i in range(num_images):
         print(f'image number {i} is done!')
 print(f'experiment took {np.round((time.time()-test_start)/60,1)} minutes!')
 
-np.save(save_path + os.sep + 'duration', duration)
+# np.save(save_path + os.sep + 'duration', duration)
 
 #%%
 duration = np.load(save_path + os.sep + 'duration.npy')
 
 #%%
 plt.plot(np.arange(duration.shape[0])*100+1, duration*10)
-plt.xticks(np.arange(6)*20000, [f'{2*i}*$10^4$' for i in range(6)])
+plt.xticks(np.arange(6)*2000, [f'{2*i}*$10^3$' for i in range(6)])
 plt.xlabel('$n^{th}$ image evaluation')
 plt.ylabel('duration [ms]')
 

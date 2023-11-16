@@ -102,7 +102,6 @@ class Delta_process:
             delta_core_position.track(frames=frames)
             # features needs to be processed so label_stack gets claculated
             delta_core_position.features(frames=frames)
-            delta_core_position.save(filename= Path(core_dir, f"Position{int(pos_name):05d}"),frames=frames)
             
             # watershed to the full bacteria
             full_bacteria_models = dict()

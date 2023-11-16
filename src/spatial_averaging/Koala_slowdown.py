@@ -22,7 +22,7 @@ host.LoadHolo(image_fnames[0],1)
 host.SetUnwrap2DState(True)
 
 evaluation_time = []
-steps = 100
+steps = 250
 ev_per_step = 100
 for i in range(steps):
     start = time.time()
@@ -34,9 +34,9 @@ for i in range(steps):
         Koala.set_reconstruction_distance(dist)
         _ = Koala.get_phase_image()
     evaluation_time.append(time.time()-start)
-#%%
+ #%%
 plt.figure()
 plt.plot(np.arange(steps)*ev_per_step, np.array(evaluation_time)/ev_per_step*1000)
 plt.xlabel("n'th image evaluation")
 plt.ylabel('time per image evaluation [ms]')
-plt.show()  
+plt.show()
