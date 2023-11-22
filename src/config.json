@@ -1,0 +1,78 @@
+{
+  "koala_config_nr": null,
+  "nfevaluations": [
+    10,
+    5,
+    5,
+    5
+  ],
+  "focus_method": [
+    "phase_sharpness",
+    "std_amp",
+    "std_amp",
+    "std_amp"
+  ],
+  "nfev_max": 100,
+  "reconstruction_distance_low": -2.0,
+  "reconstruction_distance_high": -1.4,
+  "plane_fit_order": 4,
+  "use_amp": true,
+  "image_size": [
+    800,
+    800
+  ],
+  "px_size": 0.12976230680942535,
+  "hconv": 126.3690248149649,
+  "unit_code": 1,
+  "image_cut": [
+    [
+      10,
+      710
+    ],
+    [
+      90,
+      790
+    ]
+  ],
+  "save_format": ".tif",
+  "save_as_bulk": false,
+  "additional_image_types": [
+    "BF"
+  ],
+  "bf_cut": [
+    [
+      512,
+      1536
+    ],
+    [
+      512,
+      1536
+    ]
+  ],
+  "bf_local_searches": 4,
+  "bf_rot_guess": 0.0,
+  "bf_rot_search_length": 2.0,
+  "bf_zoom_guess": 0.905,
+  "bf_zoom_search_length": 0.2,
+  "pc_cut": [
+    [
+      412,
+      1436
+    ],
+    [
+      312,
+      1336
+    ]
+  ],
+  "pc_local_searches": 4,
+  "pc_rot_guess": 0.0,
+  "pc_rot_search_length": 2.0,
+  "pc_zoom_guess": 0.905,
+  "pc_zoom_search_length": 0.2,
+  "delta_bacteria_core": "BF",
+  "model_file_bf_core_seg": "c:\\users\\sww-bc20\\documents\\github\\imaging-pipeline-for-dhm\\data\\delta_assets\\models\\unet_pads_bf_core_seg.hdf5",
+  "model_file_ph_core_seg": "c:\\users\\sww-bc20\\documents\\github\\imaging-pipeline-for-dhm\\data\\delta_assets\\models\\unet_pads_ph_core_seg.hdf5",
+  "model_file_bf_track": "c:\\users\\sww-bc20\\documents\\github\\imaging-pipeline-for-dhm\\data\\delta_assets\\models\\unet_pads_track.hdf5",
+  "model_file_ph_track": "c:\\users\\sww-bc20\\documents\\github\\imaging-pipeline-for-dhm\\data\\delta_assets\\models\\unet_pads_track.hdf5",
+  "model_file_ph_full_seg": "c:\\users\\sww-bc20\\documents\\github\\imaging-pipeline-for-dhm\\data\\delta_assets\\models\\unet_pads_full_ph_seg.hdf5"
+}

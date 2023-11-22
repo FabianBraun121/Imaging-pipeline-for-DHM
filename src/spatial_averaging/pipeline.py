@@ -19,13 +19,15 @@ from typing import List, Union, Tuple
 from pathlib import Path
 from skimage.registration import phase_cross_correlation
 from scipy import ndimage
+import tkinter as tk
 
 sys.path.append("..")
-from .utilities import (
+from src.config import Config
+from src.gui import ConfigEditorGUI
+from src.spatial_averaging.utilities import (
     gradient_squared, grid_search_2d, zoom,
     PolynomialPlaneSubtractor, Koala, ValueTracker
 )
-import config as cfg
 
 from . import binkoala
 
@@ -138,6 +140,7 @@ class DHMImage:
         It interacts with Koala, can find the true focus distance and saves the complex image at the focus distance.
     """
     def __init__(self,
+                 config: Config,
                  fname: Union[str, Path],
                  placement: Placement,
                  focus: float = None,
@@ -157,7 +160,8 @@ class DHMImage:
         None.
 
         """
-
+        
+        self.cfg: dict = config
         self.fname: Path = Path(fname)
         "Path to the holograms .tif file"
         self.corrupted = self._check_corrupted()
@@ -174,19 +178,22 @@ class DHMImage:
     def calculate_focus(self):
         Koala.load_hologram(self.fname)
         "starting search grid"
-        xmin, xmax = cfg.reconstruction_distance_low, cfg.reconstruction_distance_high
-        for i in range(len(cfg.nfevaluations)):
-            x = np.linspace(xmin, xmax, cfg.nfevaluations[i])
-            y = self._evatluate_reconstruction_distances(x, cfg.focus_method[i])
-            while np.argmin(y) == 0 and self.nfev<cfg.nfev_max: # if first element is the minimum, appending grid is tested
-                x = np.linspace(xmin-(xmax-xmin), xmin, cfg.nfevaluations[i])
+        xmin, xmax = self.cfg.get_config_setting('reconstruction_distance_low'), self.cfg.get_config_setting('reconstruction_distance_high')
+        nfev_max = self.cfg.get_config_setting('nfev_max')
+        for i in range(len(self.cfg.get_config_setting('nfevaluations'))):
+            nfevaluations = self.cfg.get_config_setting('nfevaluations')[i]
+            focus_method = self.cfg.get_config_setting('focus_method')[i]
+            x = np.linspace(xmin, xmax, nfevaluations)
+            y = self._evatluate_reconstruction_distances(x, focus_method)
+            while np.argmin(y) == 0 and self.nfev<nfev_max: # if first element is the minimum, appending grid is tested
+                x = np.linspace(xmin-(xmax-xmin), xmin, nfevaluations)
                 xmin, xmax = x[0], x[-1]
-                y = self._evatluate_reconstruction_distances(x, cfg.focus_method[i])
-            while np.argmin(y) == len(x)-1 and self.nfev<cfg.nfev_max: # if last element is the minimum, appending grid is tested
-                x = np.linspace(xmax, xmax+(xmax-xmin), cfg.nfevaluations[i])
+                y = self._evatluate_reconstruction_distances(x, focus_method)
+            while np.argmin(y) == len(x)-1 and self.nfev<nfev_max: # if last element is the minimum, appending grid is tested
+                x = np.linspace(xmax, xmax+(xmax-xmin), nfevaluations)
                 xmin, xmax = x[0], x[-1]
-                y = self._evatluate_reconstruction_distances(x, cfg.focus_method[i])
-            if cfg.nfev_max<self.nfev:
+                y = self._evatluate_reconstruction_distances(x, focus_method)
+            if nfev_max<self.nfev:
                 print(f'{self.fname} could not find a focus point')
                 self.corrupted = True
                 break
@@ -197,7 +204,7 @@ class DHMImage:
             xmax = x[np.argmin(y)] + spacing/2
             
         self.focus = x[np.argmin(y)]
-        if self.focus<cfg.reconstruction_distance_low or cfg.reconstruction_distance_high<self.focus:
+        if self.focus<self.cfg.get_config_setting('reconstruction_distance_low') or self.cfg.get_config_setting('reconstruction_distance_high')<self.focus:
             print(f'{self.fname} focus is out of borders with {np.round(self.focus,3)}')
             self.corrupted = True
         self._cplx_image()
@@ -222,7 +229,7 @@ class DHMImage:
         if self.placement.position.recon_corners is not None:
             recon_corners = self.placement.position.recon_corners
             ph = ph[recon_corners[0][0]:recon_corners[0][1], recon_corners[1][0]:recon_corners[1][1]]
-        ph = PolynomialPlaneSubtractorReconImage.subtract_plane(ph, cfg.plane_fit_order)
+        ph = PolynomialPlaneSubtractorReconImage.subtract_plane(ph, self.cfg.get_config_setting('plane_fit_order'))
         ph = ph.clip(min=0)
         # Calculate gradient magnitude using Sobel filter
         grad_x = ndimage.sobel(ph, axis=0)
@@ -235,7 +242,7 @@ class DHMImage:
         if self.placement.position.recon_corners is not None:
             recon_corners = self.placement.position.recon_corners
             amp = amp[recon_corners[0][0]:recon_corners[0][1], recon_corners[1][0]:recon_corners[1][1]]
-        amp = PolynomialPlaneSubtractorReconImage.subtract_plane(amp, cfg.plane_fit_order)
+        amp = PolynomialPlaneSubtractorReconImage.subtract_plane(amp, self.cfg.get_config_setting('plane_fit_order'))
         return np.std(amp)
     
     def _evaluate_combined(self):
@@ -245,8 +252,8 @@ class DHMImage:
             recon_corners = self.placement.position.recon_corners
             amp = amp[recon_corners[0][0]:recon_corners[0][1], recon_corners[1][0]:recon_corners[1][1]]
             ph = ph[recon_corners[0][0]:recon_corners[0][1], recon_corners[1][0]:recon_corners[1][1]]
-        amp = PolynomialPlaneSubtractorReconImage.subtract_plane(amp, cfg.plane_fit_order)
-        ph = PolynomialPlaneSubtractorReconImage.subtract_plane(ph, cfg.plane_fit_order)
+        amp = PolynomialPlaneSubtractorReconImage.subtract_plane(amp, self.cfg.get_config_setting('plane_fit_order'))
+        ph = PolynomialPlaneSubtractorReconImage.subtract_plane(ph, self.cfg.get_config_setting('plane_fit_order'))
         return -np.std(ph)/np.std(amp)
         
     def _check_corrupted(self):
@@ -265,8 +272,8 @@ class DHMImage:
         Koala.set_reconstruction_distance(self.focus)
         amp = Koala.get_intensity_image()
         ph = Koala.get_phase_image()
-        ph = PolynomialPlaneSubtractorFullImage.subtract_plane(ph, cfg.plane_fit_order)
-        if cfg.use_amp:
+        ph = PolynomialPlaneSubtractorFullImage.subtract_plane(ph, self.cfg.get_config_setting('plane_fit_order'))
+        if self.cfg.get_config_setting('use_amp'):
             amp = Koala.get_intensity_image()
             self.cplx_image = amp*np.exp(complex(0.,1.)*ph)
         else:
@@ -281,6 +288,7 @@ class SpatialPhaseAveraging:
         Class subtracts the background and spatially averages a set of overlapping images.
     """
     def __init__(self,
+                 config: Config,
                  position: Position,
                  placements: List[Placement],
                  timestep: int,
@@ -300,6 +308,8 @@ class SpatialPhaseAveraging:
         None.
 
         """
+        self.cfg = config
+        "Reference to the config instance"
         self.position: Position = position
         "Position class with all the relevant informations about the position"
         self.timestep: int = timestep
@@ -325,7 +335,8 @@ class SpatialPhaseAveraging:
         if self.position.get_tracker_value('background', str(self.position.pos_dir)+os.sep+'background.tif') is not None:
             return self.position.get_tracker_value('background', str(self.position.pos_dir)+os.sep+'background.tif')
         else:
-            images = np.zeros((len(self.dhm_images), cfg.image_size[0], cfg.image_size[1]), dtype=np.complex64)
+            image_size = self.cfg.get_config_setting('image_size')
+            images = np.zeros((len(self.dhm_images), image_size[0], image_size[1]), dtype=np.complex64)
             for i in range(len(self.dhm_images)):
                 images[i] = self.dhm_images[i].get_cplx_image()
             background = (np.median(np.abs(images), axis=0)*np.exp(1j*np.median(np.angle(images), axis=0))).astype(np.complex64)
@@ -353,7 +364,7 @@ class SpatialPhaseAveraging:
         dhm_images = []
         for pl in self.placements:
             fname = Path(str(pl.place_dir) + os.sep + "Holograms" + os.sep + str(self.timestep).zfill(5) + "_holo.tif")
-            dhm_image = DHMImage(fname, pl)
+            dhm_image = DHMImage(self.cfg, fname, pl)
             if dhm_image.corrupted:
                 continue
             dhm_image.calculate_focus()
@@ -401,10 +412,11 @@ class Pipeline:
     """
     def __init__(
             self,
-            base_dir: Union[str, Path],
+            config: Config,
+            base_dir: Union[str, Path] = None, 
             saving_dir: Union[str, Path] = None,
-            restrict_positions: slice = None,
-            restrict_timesteps: range = None,
+            restrict_positions: Tuple[int, int] = None,
+            restrict_timesteps: Tuple[int, int] = None,
             ):
         """
         Parameters
@@ -413,7 +425,7 @@ class Pipeline:
             Path to the directory where the experiment is saved.
         saving_dir : Union[str, Path], optional
             Path to the directory where the processed images should be saved. The default is None.
-        restrict_positions : slice, optional
+        restrict_positions : tuple, optional
             Slice of the positions that should be processed. The default is None.
         restrict_timesteps : range, optional
             Range of the timesteps that should be processed. The default is None.
@@ -423,16 +435,20 @@ class Pipeline:
         None.
 
         """
-        self.base_dir: Path = Path(base_dir)
+        self.cfg: Config = config
+        "All settings are saved in this config class"
+        if base_dir is not None:
+            self.cfg.set_config_setting('base_dir', base_dir)
         "Path to the directory where the experiment is saved"
-        self.saving_dir: Path = self._saving_dir(saving_dir)
+        if saving_dir is not None:
+            self.cfg.set_config_setting('saving_dir', self._saving_dir(saving_dir))
         "Path to the directory where the processed images should be saved"
-        self.data_file_path: Path = None
-        "Path where the information about the processing is saved"
-        self.restrict_positions: slice = restrict_positions
+        if restrict_positions is not None:
+            self.cfg.set_config_setting('restrict_positions', restrict_positions)
         "Slice of the positions that should be processed"
-        self.restrict_timesteps: range = restrict_timesteps
-        "Range of the timesteps that should be processed"
+        if restrict_timesteps is not None:
+            self.cfg.set_config_setting('restrict_timesteps', restrict_timesteps)
+        "Range of the timesteps that should be processed"      
         self.positions: List[Position] = self._positions()
         "List of the positions that are processed"
         self.first_timestep: int = None
@@ -441,21 +457,28 @@ class Pipeline:
         "Range of the timesteps that are processed"
         self.image_settings_updated: bool = False
         "Checks if the image settings in the config files are updated"
-        Koala.connect(cfg.koala_config_nr)
+        self.data_file_path: Path = None
+        "Path where the information about the processing is saved"
         
+        Koala.connect(self.cfg.get_config_setting('koala_config_nr'))
+        if self.cfg.get_config_setting('recon_rectangle'):
+            self.select_positions_recon_rectangle(same_for_all_pos = self.cfg.get_config_setting('recon_all_the_same_var'),
+                                                  recon_corners=self.cfg.get_config_setting('recon_corners'))
+            
     
     def _get_last_phase_image(self, po: Position, save_ph_pos: str, t: int):
-        if cfg.save_as_bulk:
-            fname = f'{save_ph_pos}//pos_{po.pos_name}_timestep_{str(t).zfill(5)}_PH{cfg.save_format}'
+        save_format = self.cfg.get_config_setting('save_format')
+        if self.cfg.get_config_setting('save_as_bulk'):
+            fname = f'{save_ph_pos}//pos_{po.pos_name}_timestep_{str(t).zfill(5)}_PH{save_format}'
         else:
-            fname = f'{save_ph_pos}//{str(t).zfill(5)}_PH{cfg.save_format}'
+            fname = f'{save_ph_pos}//{str(t).zfill(5)}_PH{save_format}'
         if os.path.isfile(fname):
-            if cfg.save_format == '.tif':
+            if save_format == '.tif':
                 return tifffile.imread(fname)
-            elif cfg.save_format == '.bin':
+            elif save_format == '.bin':
                 return binkoala.read_mat_bin(fname)[0]
             else:
-                raise RuntimeError(f'Unknown save format: {cfg.save_format}')
+                raise RuntimeError(f'Unknown save format: {save_format}')
         else:
             return None
     
@@ -477,42 +500,40 @@ class Pipeline:
 
     def _positions(self) -> List[Position]:
         "returns a list of the selected positions"
-        all_positions =[Position(Path(f.path)) for f in os.scandir(self.base_dir) if f.is_dir()]
-        if self.restrict_positions == None:
+        all_positions =[Position(Path(f.path)) for f in os.scandir(self.cfg.get_config_setting('base_dir')) if f.is_dir()]
+        if self.cfg.get_config_setting('restrict_positions') == None:
             return all_positions
         else:
-            return all_positions[self.restrict_positions]
+            min_pos, max_pos = self.cfg.get_config_setting('restrict_positions')
+            return all_positions[min_pos:max_pos]
         
     def process(self):
-        "processes the images. First loop is through the positions, secand through the timesteps."
-        if cfg._LOADED is False:
-            raise RuntimeError("configuration has not been loaded, do so by executing sa.config.load_config")
         for po in self.positions:
             placements = [Placement(place_dir=Path(str(f.path)), position=po) for f in os.scandir(str(po.pos_dir)) if f.is_dir()] # list of all placements
             for t in self.timesteps:
                 start_image = time.time()
-                spa = SpatialPhaseAveraging(po, placements, t)
+                spa = SpatialPhaseAveraging(self.cfg, po, placements, t)
                 if spa.corrupted:    
                     continue
                 phase_image = np.angle(spa.get_spatial_avg()).astype(np.float32)
                 
                 if not self.image_settings_updated:
-                    cfg.set_image_variables((Koala._host.GetPhaseWidth(),Koala._host.GetPhaseHeight()), Koala._host.GetPxSizeUm(), Koala._host.GetLambdaNm(0))
+                    self._set_image_variables()
                     self._update_image_cut(spa)
                     self.data_file_path = self._write_data_file()
                     self.image_settings_updated = True
                 
-                if cfg.save_as_bulk:
-                    save_ph_pos = str(self.saving_dir) + os.sep + 'PH'
+                if self.cfg.get_config_setting('save_as_bulk'):
+                    save_ph_pos = str(self.cfg.get_config_setting('saving_dir')) + os.sep + 'PH'
                 else:
-                    save_ph_pos = str(self.saving_dir) + os.sep + po.pos_name
+                    save_ph_pos = str(self.cfg.get_config_setting('saving_dir')) + os.sep + po.pos_name
                 if not os.path.exists(save_ph_pos):
                     os.makedirs(save_ph_pos)
                 
                 last_phase_image = self._get_last_phase_image(po, save_ph_pos, t)
                 phase_image = self._temporal_shift_correction(phase_image, last_phase_image)
                 
-                for image_type in cfg.additional_image_types:
+                for image_type in self.cfg.get_config_setting('additional_image_types'):
                     self._save_aligned_image_of_various_types(phase_image, po, t, image_type)
                 
                 self._save_image(phase_image, po, save_ph_pos, t)
@@ -527,11 +548,11 @@ class Pipeline:
             gc.collect()
     
     def _save_aligned_image_of_various_types(self, phase_image: Image, po: Position, t: int, image_type: str) -> Image:
-        lt = image_type.lower() # since this is used ofthen
-        image_cut = getattr(cfg, f'{lt}_cut')
+        it = image_type.lower() # since this is used ofthen
+        image_cut = self.cfg.get_config_setting(f'{it}_cut')
         fname = Path(po.pos_dir, f'{str(t).zfill(5)}_{image_type}.tif')
         if not os.path.isfile(fname):
-            raise RuntimeWarning('{fname} does not exist')
+            raise RuntimeWarning(f'{fname} does not exist')
             return
         image = tifffile.imread(fname)
         image = np.fliplr(image)
@@ -541,9 +562,9 @@ class Pipeline:
         phase_ = gradient_squared(ph_)
         image_ = gradient_squared(image)
         if po.get_tracker_value(image_type) is None:
-            rot, zoomlevel = grid_search_2d(phase_, image_, getattr(cfg, f'{lt}_rot_guess'),
-                                            getattr(cfg, f'{lt}_zoom_guess'), getattr(cfg, f'{lt}_rot_search_length'),
-                                            getattr(cfg, f'{lt}_zoom_search_length'), getattr(cfg, f'{lt}_local_searches'))
+            rot, zoomlevel = grid_search_2d(phase_, image_, self.cfg.get_config_setting(f'{it}_rot_guess'),
+                                            self.cfg.get_config_setting(f'{it}_zoom_guess'), self.cfg.get_config_setting(f'{it}_rot_search_length'),
+                                            self.cfg.get_config_setting(f'{it}_zoom_search_length'), self.cfg.get_config_setting(f'{it}_local_searches'))
             po.append_tracker_value(image_type, (rot, zoomlevel))
         else:
             rot, zoomlevel = po.get_tracker_value(image_type)
@@ -555,35 +576,38 @@ class Pipeline:
         image = ndimage.shift(zoom(trans.rotate(image, rot, mode="edge"),zoomlevel), tuple(shift_measured))
         image = image[:phase_image.shape[0], :phase_image.shape[1]]
         
-        if cfg.save_as_bulk:
-            save_folder = f'{str(self.saving_dir)}//{image_type}'
+        if self.cfg.get_config_setting('save_as_bulk'):
+            save_folder = f'{str(self.cfg.get_config_setting("saving_dir"))}//{image_type}'
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder)
             save_fname = f'{save_folder}//pos_{po.pos_name}_timestep_{str(t).zfill(5)}_{image_type}.tif'
         else:
-            save_fname = f'{str(self.saving_dir)}//{po.pos_name}//{str(t).zfill(5)}_{image_type}.tif'
+            save_fname = f'{str(self.cfg.get_config_setting("saving_dir"))}//{po.pos_name}//{str(t).zfill(5)}_{image_type}.tif'
         tifffile.imwrite(save_fname, image)
     
     def _save_image(self, phase_image: Image, po: Position, save_ph_pos: str, t: int):
         "saves the images in the selected format. Either .tif or .bin"
-        if cfg.save_as_bulk:
-            fname = f'{save_ph_pos}//pos_{po.pos_name}_timestep_{str(t).zfill(5)}_PH{cfg.save_format}'
+        save_format = self.cfg.get_config_setting('save_format')
+        if self.cfg.get_config_setting('save_as_bulk'):
+            fname = f'{save_ph_pos}//pos_{po.pos_name}_timestep_{str(t).zfill(5)}_PH{save_format}'
         else:
-            fname = f'{save_ph_pos}//{str(t).zfill(5)}_PH{cfg.save_format}'
+            fname = f'{save_ph_pos}//{str(t).zfill(5)}_PH{save_format}'
             
-        if cfg.save_format == ".tif":
+        if save_format == ".tif":
             tifffile.imwrite(fname, phase_image)
-        elif cfg.save_format == ".bin":
-            binkoala.write_mat_bin(fname, phase_image, phase_image.shape[0], phase_image.shape[1], cfg.px_size, cfg.hconv, cfg.unit_code)
+        elif save_format == ".bin":
+            binkoala.write_mat_bin(fname, phase_image, phase_image.shape[0], phase_image.shape[1], self.cfg.get_config_setting('px_size'),
+                                   self.cfg.get_config_setting('hconv'), self.cfg.get_config_setting('unit_code'))
         else:
-            raise RuntimeError(f'Unknown saving format: {cfg.save_format}')
+            raise RuntimeError(f'Unknown saving format: {save_format}')
     
     def _saving_dir(self, saving_dir: Union[str, Path]) -> Path:
         "returns the saveing dir"
         if saving_dir == None:
-            saving_dir = Path(str(self.base_dir) + " processed")
-            if not os.path.exists(str(saving_dir)):
-                os.makedirs(str(saving_dir))
+            if self.cfg.get_config_setting('base_dir') != None:
+                saving_dir = Path(str(self.cfg.get_config_setting('base_dir')) + " processed")
+            else:
+                return None
         return Path(saving_dir)
     
     def select_positions_recon_rectangle(self, same_for_all_pos: bool = False, recon_corners: Tuple[Tuple[int]] = None):
@@ -595,15 +619,21 @@ class Pipeline:
             p0_dir = Path(str(po.pos_dir) + os.sep + [d for d in os.listdir(str(po.pos_dir)) if os.path.isdir(Path(po.pos_dir,d))][0])
             p0 = Placement(place_dir=p0_dir, position=po)
             fname = Path(str(p0.place_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
-            dhm_image = DHMImage(fname, p0, focus = (cfg.reconstruction_distance_low+cfg.reconstruction_distance_high)/2)
+            dhm_image = DHMImage(fname, p0, focus = (self.cfg.get_config_setting('reconstruction_distance_low')+self.cfg.get_config_setting('reconstruction_distance_high'))/2)
             ph_image = np.angle(dhm_image.get_cplx_image())
             recon_corners = self._get_rectangle_coordinates(ph_image)
             po.recon_corners = recon_corners
-            
+    
+    def _set_image_variables(self):
+        self.cfg.set_config_setting('image_size', (Koala._host.GetPhaseWidth(),Koala._host.GetPhaseHeight()))
+        self.cfg.set_config_setting('px_size', Koala._host.GetPxSizeUm())
+        self.cfg.set_config_setting('hconv', Koala._host.GetLambdaNm(0))
+        
     def _temporal_shift_correction(self, current_image: Image, last_image: Image) -> Image:
         "images can move overtime, this function corrects for the shift. Movement is due to different focus distances"
         if last_image is None:
-            return current_image[cfg.image_cut[0][0]:cfg.image_cut[0][1],cfg.image_cut[1][0]:cfg.image_cut[1][1]]
+            image_cut = self.cfg.get_config_setting('image_cut')
+            return current_image[image_cut[0][0]:image_cut[0][1],image_cut[1][0]:image_cut[1][1]]
         else:
             last_image_ = np.zeros_like(current_image)
             last_image_[:last_image.shape[0], :last_image.shape[1]] = last_image
@@ -617,14 +647,15 @@ class Pipeline:
         
     def _timesteps(self) -> range:
         "returns the range of the timesteps processed"
-        holo_path = str(self.base_dir)+os.sep+self.positions[0].pos_name + os.sep + "00001_00001\Holograms"
+        holo_path = str(self.cfg.get_config_setting('base_dir'))+os.sep+self.positions[0].pos_name + os.sep + "00001_00001\Holograms"
         self.first_timestep = int(sorted(os.listdir(holo_path))[0][:5])
-        if self.restrict_timesteps == None:
+        if self.cfg.get_config_setting('restrict_timesteps') == None:
             num_timesteps = len(os.listdir(holo_path))
             all_timesteps = range(self.first_timestep, self.first_timestep + num_timesteps)
             return all_timesteps
         else:
-            return self.restrict_timesteps
+            min_timestep, max_timestep = self.cfg.get_config_setting('restrict_timesteps')
+            return range(min_timestep, max_timestep)
     
     def _update_data_file(self, spa, time):
         "updates the data file with informations about the current averaged image"
@@ -644,7 +675,7 @@ class Pipeline:
             "shift_y": tuple(int(placement.shift_vector[0]) for placement in spa.placements),
         }
         
-        for image_type in cfg.additional_image_types:
+        for image_type in self.cfg.get_config_setting('additional_image_types'):
             if spa.position.trackers[image_type].value is not None:
                 rot, zoom = spa.position.trackers[image_type].value
             else:
@@ -661,31 +692,34 @@ class Pipeline:
         x_shifts = np.array([placement.shift_vector[1] for placement in spa.placements])
         y_midpoint = np.round(np.mean([np.min(y_shifts), np.max(y_shifts)]), 0)
         x_midpoint = np.round(np.mean([np.min(x_shifts), np.max(x_shifts)]), 0)
-        image_cut = ((50+int(y_midpoint), cfg.image_size[0]-50+int(y_midpoint)), (50+int(x_midpoint), cfg.image_size[1]-50+int(x_midpoint)))
-        cfg.set_image_cut(image_cut)
+        image_size = self.cfg.get_config_setting('image_size')
+        image_cut = ((50+int(y_midpoint), image_size[0]-50+int(y_midpoint)), (50+int(x_midpoint), image_size[1]-50+int(x_midpoint)))
+        self.cfg.set_config_setting('image_cut', image_cut)
 
     def _write_data_file(self) -> Path:
         "writes an data file with the informations about the processing"
         current_datetime = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
-        data_file_path = Path(self.saving_dir, f'data file {current_datetime}.json')
+        data_file_path = Path(self.cfg.get_config_setting('saving_dir'), f'data file {current_datetime}.json')
         
         data = {
             "settings": {
-                "base_dir": str(self.base_dir),
+                "base_dir": str(self.cfg.get_config_setting('base_dir')),
                 "koala_configuration": Koala._config_number,
-                "nfevaluations": cfg.nfevaluations,
-                "final_grid_spacing": (cfg.reconstruction_distance_high-cfg.reconstruction_distance_low)/np.prod([f-1 for f in cfg.nfevaluations]),
-                "nfev_max": cfg.nfev_max,
-                "reconstruction_distance_low": cfg.reconstruction_distance_low,
-                "reconstruction_distance_high": cfg.reconstruction_distance_high,
-                "plane_fit_order": cfg.plane_fit_order,
-                "use_amp": cfg.use_amp,
-                "image_size": cfg.image_size,
-                "px_size": cfg.px_size,
-                "hconv": cfg.hconv,
-                "unit_code": cfg.unit_code,
-                "image_cut": cfg.image_cut,
-                "save_format": cfg.save_format,
+                "nfevaluations": self.cfg.get_config_setting('nfevaluations'),
+                "final_grid_spacing": (self.cfg.get_config_setting('reconstruction_distance_high')
+                                       -self.cfg.get_config_setting('reconstruction_distance_low')
+                                       )/np.prod([f-1 for f in self.cfg.get_config_setting('nfevaluations')]),
+                "nfev_max": self.cfg.get_config_setting('nfev_max'),
+                "reconstruction_distance_low": self.cfg.get_config_setting('reconstruction_distance_low'),
+                "reconstruction_distance_high": self.cfg.get_config_setting('reconstruction_distance_high'),
+                "plane_fit_order": self.cfg.get_config_setting('plane_fit_order'),
+                "use_amp": self.cfg.get_config_setting('use_amp'),
+                "image_size": self.cfg.get_config_setting('image_size'),
+                "px_size": self.cfg.get_config_setting('px_size'),
+                "hconv": self.cfg.get_config_setting('hconv'),
+                "unit_code": self.cfg.get_config_setting('unit_code'),
+                "image_cut": self.cfg.get_config_setting('image_cut'),
+                "save_format": self.cfg.get_config_setting('save_format'),
             },
             "images": {}
         }

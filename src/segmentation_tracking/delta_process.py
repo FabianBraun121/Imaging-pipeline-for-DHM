@@ -12,13 +12,17 @@ from scipy.ndimage import distance_transform_edt
 import tensorflow as tf
 import numpy as np
 from typing import cast, List, Union, Dict, Optional, Any, Tuple
+from scipy.ndimage import label, find_objects
+from skimage.measure import regionprops
 from pathlib import Path
 import tifffile
 import delta
+import glob
 import re
+import pandas as pd
 
 sys.path.append("..")
-import config as cfg
+from src.config import Config
 
 
 class Delta_process:
@@ -28,7 +32,8 @@ class Delta_process:
     """    
     def __init__(
             self,
-            base_dir: Union[str, Path],
+            config: Config,
+            base_dir: Union[str, Path] = None,
             saving_dir: Union[str, Path] = None,
             restrict_positions: slice = None,
             filenamesindexing: int = 1       
@@ -48,52 +53,168 @@ class Delta_process:
         None.
 
         """
-        self.base_dir: Path = Path(base_dir)
+        self.cfg: Config = config
+        "All settings are saved in this config class"
+        self.cfg.set_config_setting('delta_base_dir', self._base_dir(base_dir))
         "Directory of the various positions folders"
+        self.cfg.set_config_setting('delta_saving_dir', self._saving_dir(saving_dir))
         self.data_file_path: Path = None
         "Path for a processing data file. Not in use at the moment."
         self.restrict_positions: slice = restrict_positions
         "Restrict the positions processed"
         self.positions = self._positions()
-        if saving_dir is not None:
-            self.saving_dir: Path = Path(saving_dir)
-        else:
-            self.saving_dir = self.base_dir
         self.filenamesindexing = filenamesindexing
         
+    def _base_dir(self, base_dir):
+        if base_dir is not None:
+            return Path(base_dir)
+        else:
+            return Path(self.cfg.get_config_setting('saving_dir'))
+        
+    def _saving_dir(self, saving_dir):
+        if saving_dir is not None:
+            return Path(saving_dir)
+        else:
+            return Path(self.cfg.get_config_setting('delta_base_dir'))
+    
     def _positions(self) -> List[str]:
         "returns a list of th positions processed."
-        positions = [d for d in os.listdir(self.base_dir) if os.path.isdir(Path(self.base_dir,d))]
+        delta_base_dir = self.cfg.get_config_setting('delta_base_dir')
+        positions = [d for d in os.listdir(delta_base_dir) if os.path.isdir(Path(delta_base_dir,d))]
         if self.restrict_positions is None:
             return positions
         else:
             return positions[self.restrict_positions]
         
     def process(self):
+        if self.cfg.get_config_setting('save_as_bulk'):
+            self._process_seg()
+        else:
+            self._process_seg_and_track()
+    
+    def _process_seg(self):
+        delta.config.load_config(presets="2D")
+        
+        saving_delta_dir = self.cfg.get_config_setting('delta_saving_dir')
+        if not os.path.exists(saving_delta_dir): 
+            os.makedirs(saving_delta_dir)
+        
+        ph_folder = Path(self.cfg.get_config_setting('delta_saving_dir'), 'PH')
+        core_folder =  Path(self.cfg.get_config_setting('delta_saving_dir'), self.cfg.get_config_setting('delta_bacteria_core'))
+        delta_ph_folder = Path(self.cfg.get_config_setting('delta_saving_dir'), 'delta_PH')
+        if not os.path.exists(delta_ph_folder): 
+            os.makedirs(delta_ph_folder)
+        files_list = []
+        for fname in sorted(os.listdir(ph_folder)):
+            core_folder_list = [f[:-7] for f in os.listdir(core_folder)]
+            if fname[:-7] in core_folder_list and fname.endswith('.tif'):
+                self._read_rescale_save_ph_image(Path(ph_folder, fname), Path(delta_ph_folder, fname))
+                files_list.append(fname[:-7])
+        
+        if self.cfg.get_config_setting('delta_bacteria_core') == 'PH':
+            core_folder = Path(self.cfg.get_config_setting('delta_saving_dir'), 'delta_PH')
+        
+        core_seg_weights = self.cfg.get_config_setting(f'model_file_{self.cfg.get_config_setting("delta_bacteria_core").lower()}_core_seg')
+        core_seg = self._process_seg_images(core_folder, files_list, self.cfg.get_config_setting('delta_bacteria_core'), core_seg_weights)
+        label_stack = []
+        for i in range(core_seg.shape[0]):
+            labeled_array, _ = label(core_seg[i])
+            label_stack.append(labeled_array)
+        
+        full_seg_weights = self.cfg.get_config_setting('model_file_ph_full_seg')
+        full_seg = self._process_seg_images(delta_ph_folder, files_list, 'PH', full_seg_weights)
+        
+        labeled_full_seg = self._watershed_labeled_cores_to_bacteria_outsides(label_stack, list(full_seg))
+        data = []
+        seg_folder = Path(self.cfg.get_config_setting('delta_saving_dir'), 'SEG')
+        if not os.path.exists(seg_folder): 
+            os.makedirs(seg_folder)
+        
+        for i in range(len(files_list)):
+            ph_image = tifffile.imread(Path(ph_folder, f'{files_list[i]}_PH.tif'))
+            regions = regionprops(labeled_full_seg[i])
+            tifffile.imwrite(Path(seg_folder, f'{files_list[i]}.tif'), labeled_full_seg[i])
+            for props in regions:
+                mean_opl_nm = np.mean(ph_image[labeled_full_seg[i]==props.label]) * self.cfg.get_config_setting('hconv')
+                integrated_opl_μm_cubed = mean_opl_nm * 1e-3 * props.area * self.cfg.get_config_setting('px_size')**2
+                mass_pg = integrated_opl_μm_cubed / 0.18
+                row = {
+                    'image_name': files_list[i],
+                    'label': props.label,
+                    'centroid': props.centroid,
+                    'area_px': props.area,
+                    'area_μm_sq': props.area * self.cfg.get_config_setting('px_size')**2,
+                    'length_px': props.major_axis_length,
+                    'length_μm': props.major_axis_length * self.cfg.get_config_setting('px_size'),
+                    'width_px': props.minor_axis_length,
+                    'width_μm': props.minor_axis_length * self.cfg.get_config_setting('px_size'),
+                    'mean_opl_nm': mean_opl_nm,
+                    'integrated_opl_μm_cubed': integrated_opl_μm_cubed,
+                    'mass_pg': mass_pg
+                    }
+                data.append(row)
+        pd.DataFrame(data).to_csv(Path(saving_delta_dir, 'bacteria_data.csv'), index=False)
+            
+    def _process_seg_images(self, folder, files_list, image_type, model_weights):
+        model = delta.model.unet_seg(input_size=delta.config.target_size_seg + (1,))
+        model.load_weights(model_weights)
+
+        to_process = [str(Path(folder, f'{i}_{image_type}.tif')) for i in files_list]
+        predGene = delta.data.predictGenerator_seg(
+            folder,
+            files_list=to_process,
+            target_size=delta.config.target_size_seg,
+            crop=delta.config.crop_windows)
+        
+        img = delta.data.readreshape(
+            os.path.join(folder, to_process[0]),
+            target_size=delta.config.target_size_seg,
+            crop=True,
+        )
+        # Create array to store predictions
+        results = np.zeros((len(to_process), img.shape[0], img.shape[1], 1))
+        # Crop, segment, stitch and store predictions in results
+        for i in range(len(to_process)):
+            # Crop each frame into overlapping windows:
+            windows, loc_y, loc_x = delta.utilities.create_windows(
+                next(predGene)[0, :, :], target_size=delta.config.target_size_seg
+            )
+            # We have to play around with tensor dimensions to conform to
+            # tensorflow's functions:
+            windows = windows[:, :, :, np.newaxis]
+            # Predictions:
+            pred = model.predict(windows, verbose=1, steps=windows.shape[0])
+            # Stich prediction frames back together:
+            pred = delta.utilities.stitch_pic(pred[:, :, :, 0], loc_y, loc_x)
+            pred = pred[np.newaxis, :, :, np.newaxis]  # Mess around with dims
+
+            results[i] = pred
+        
+        results = delta.data.postprocess(results, crop=delta.config.crop_windows)
+        return results
+
+    
+    def _process_seg_and_track(self):
         """processes the positions. First with DeLTA. Then bacteria are enlarged.
         Mean opl, integrated opl and mass are calculated. Newly calculated data is saved."""
         delta.config.load_config(presets="2D")
         
         for pos_name in self.positions:
-            pos_dir = Path(self.base_dir,pos_name)
-            if self.saving_dir is not None:
-                saving_dir_pos = Path(self.saving_dir, pos_name)
-            else:
-                saving_dir_pos = None
+            pos_dir = Path(self.cfg.get_config_setting('delta_base_dir'), pos_name)
             
             # core sgementation and tracking
             core_models = dict()
             core_dir = str(pos_dir) + os.sep + 'bacteria_cores'
             if not os.path.exists(core_dir): 
                 os.makedirs(core_dir) 
-            if cfg.delta_bacteria_core == "BF":
+            if self.cfg.get_config_setting('delta_bacteria_core') == "BF":
                 self._save_bf_as_delta_compatible(str(pos_dir), core_dir)
-                core_models["segmentation"] = tf.keras.models.load_model(cfg.model_file_bf_core_seg, compile=False)
-                core_models["tracking"] = tf.keras.models.load_model(cfg.model_file_bf_track, compile=False)
-            if cfg.delta_bacteria_core == "PH":
+                core_models["segmentation"] = tf.keras.models.load_model(self.cfg.get_config_setting('model_file_bf_core_seg'), compile=False)
+                core_models["tracking"] = tf.keras.models.load_model(self.cfg.get_config_setting('model_file_bf_track'), compile=False)
+            if self.cfg.get_config_setting('delta_bacteria_core') == "PH":
                 self._save_ph_as_delta_compatible(str(pos_dir), core_dir)
-                core_models["segmentation"] = tf.keras.models.load_model(cfg.model_file_ph_core_seg, compile=False)
-                core_models["tracking"] = tf.keras.models.load_model(cfg.model_file_ph_track, compile=False)
+                core_models["segmentation"] = tf.keras.models.load_model(self.cfg.get_config_setting('model_file_ph_core_seg'), compile=False)
+                core_models["tracking"] = tf.keras.models.load_model(self.cfg.get_config_setting('model_file_ph_track'), compile=False)
             core_xpreader = delta.utils.xpreader(core_dir)
             delta_core_position = delta.pipeline.Position(0, core_xpreader, core_models, drift_correction=False, crop_windows=True)
             frames = [f for f in range(core_xpreader.timepoints)]
@@ -109,7 +230,7 @@ class Delta_process:
             if not os.path.exists(full_bacteria_dir): 
                 os.makedirs(full_bacteria_dir)
             self._save_ph_as_delta_compatible(str(pos_dir), full_bacteria_dir)
-            full_bacteria_models["segmentation"] = tf.keras.models.load_model(cfg.model_file_ph_full_seg, compile=False)
+            full_bacteria_models["segmentation"] = tf.keras.models.load_model(self.cfg.get_config_setting('model_file_ph_full_seg'), compile=False)
             full_bacteria_xpreader = delta.utils.xpreader(full_bacteria_dir)
             delta_full_position = delta.pipeline.Position(0, full_bacteria_xpreader, full_bacteria_models, drift_correction=False, crop_windows=True)
             delta_full_position.preprocess(rotation_correction=False)
@@ -130,11 +251,11 @@ class Delta_process:
                 for frame in cell['frames']:
                     # cells are marked 1 higher in the label stack, because cell id starts with 0 and 0 is the background in the label stack
                     mask = delta_core_position.rois[0].label_stack[frame] == cell['id'] + 1
-                    cell['mean_opl'].append((np.mean(delta_core_position.rois[0].img_stack[frame][mask])/65535*np.pi-np.pi/2) * cfg.hconv)
-                cell['integrated_opl'] = list((np.array(cell['mean_opl']) * 1e-3)  * (np.array(cell['area']) * (cfg.px_size)**2)) #opl in micro meters cubed
-                cell['mass'] = list((1 / 0.18) * np.array(cell['integrated_opl'])) # pico gram
+                    cell['mean_opl'].append((np.mean(delta_core_position.rois[0].img_stack[frame][mask])/65535*np.pi-np.pi/2) * self.cfg.get_config_setting('hconv'))
+                cell['integrated_opl'] = list((np.array(cell['mean_opl']) * 1e-3)  * (np.array(cell['area']) * (self.cfg.get_config_setting('px_size'))**2)) #opl in micro meters cubed
+                cell['mass'] = list((1 / 0.18) * np.array(cell['integrated_opl'])) # femto gram
             
-            delta_outputs_dir = str(pos_dir) + os.sep + 'delta_outputs'
+            delta_outputs_dir = str(Path(self.cfg.get_config_setting('delta_saving_dir'), pos_name)) + os.sep + 'delta_outputs'
             if not os.path.exists(delta_outputs_dir): 
                 os.makedirs(delta_outputs_dir)
             # Save to disk and clear memory:
@@ -154,10 +275,13 @@ class Delta_process:
     def _save_ph_as_delta_compatible(self, pos_dir, saving_pos_dir):
         ph_fnames = [ph for ph in os.listdir(pos_dir) if 'PH' in ph]
         for i, ph_fname in enumerate(ph_fnames):
-            ph_image = tifffile.imread(pos_dir + os.sep + ph_fname)
-            ph_scaled = (((ph_image + np.pi/2) / np.pi) * 65535).astype(np.uint16)
-            fname = saving_pos_dir + os.sep + f"pos{str(self.filenamesindexing).zfill(5)}cha{self.filenamesindexing}fra{str(i+self.filenamesindexing).zfill(5)}.tif"
-            tifffile.imwrite(fname, ph_scaled)
+            fname_out = saving_pos_dir + os.sep + f"pos{str(self.filenamesindexing).zfill(5)}cha{self.filenamesindexing}fra{str(i+self.filenamesindexing).zfill(5)}.tif"
+            self.read_rescale_save_ph_image(pos_dir + os.sep + ph_fname, fname_out)
+    
+    def _read_rescale_save_ph_image(self, fpath_in, fpath_out):
+        ph_image = tifffile.imread(fpath_in)
+        ph_scaled = (((ph_image + np.pi/2) / np.pi) * 65535).astype(np.uint16)
+        tifffile.imwrite(fpath_out, ph_scaled)
     
     def _save_bf_as_delta_compatible(self, pos_dir, saving_pos_dir):
         bf_fnames = [bf for bf in os.listdir(pos_dir) if 'BF' in bf]

@@ -88,6 +88,8 @@ def evaluate_phase_shift_error(image1: Image, image2: Image, rotation: float, zo
     return error
 
 def zoom(I: Image, zoomlevel: float) -> Image:
+    if zoomlevel <= 0:
+        return np.zeros_like(I)
     oldshape = I.shape
     I_zoomed = np.zeros_like(I)
     I = trans.rescale(I, zoomlevel, mode="edge")
@@ -284,7 +286,7 @@ class Koala:
         
         # shortest time would be 1826, assumed that restarting takes 10 seconds and the time increase is 0.006ms per evaluation.
         # parameters have been experimentally shown. Minimum calculated with sqrt((2*reset_time)/time_increase)
-        if cls._evaluation_counter >= 2000 and is_screen_active():
+        if cls._evaluation_counter >= 5000 and is_screen_active():
             cls.shut_down_restart()
         
         if cls._open_holo != str(holo_fname):
