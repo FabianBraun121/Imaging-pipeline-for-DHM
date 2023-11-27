@@ -13,13 +13,14 @@ import cv2
 import subprocess
 import pyautogui
 import psutil
+import ctypes
+import skimage.transform as trans
+import pygetwindow as gw
 from typing import Tuple
 from pathlib import Path
 from sklearn.preprocessing import PolynomialFeatures
 from skimage.registration import phase_cross_correlation
 from PyQt5.QtWidgets import QFileDialog
-import ctypes
-import skimage.transform as trans
 from scipy import ndimage
 from  pyKoalaRemote import client
 # Add Koala remote librairies to Path
@@ -194,23 +195,7 @@ def is_koala_running():
             return True
     return False
 
-def open_koala():
-    wd = os.getcwd()
-    os.chdir(r"C:\Program Files\LynceeTec\Koala")
-    subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
-    time.sleep(4)
-    pyautogui.typewrite('admin')
-    pyautogui.press('tab')
-    pyautogui.typewrite('admin')
-    pyautogui.press('enter')
-    time.sleep(4)
-    os.chdir(wd)
-    screenshot = pyautogui.screenshot()
-    remote_log = cv2.imread(r'spatial_averaging/images/remote_log_icon.png')
-    remote_log_pos = find_image_position(screenshot, remote_log)
-    pyautogui.click(remote_log_pos)
-
-def find_image_position(screenshot, image, threshold=0.95):
+def find_image_position(screenshot, image, threshold=0.8):
     """
     Finds the position of a given image in a given screenshot using template matching.
     Args:
@@ -237,6 +222,52 @@ def find_image_position(screenshot, image, threshold=0.95):
     
     return center_x, center_y
 
+def koala_to_the_front():
+    while True:
+        process = gw.getWindowsWithTitle("Koala")
+        if len(process) != 0:
+            if process:
+                process[0].activate()
+                process[0].activate()
+                time.sleep(0.1)
+                return
+        time.sleep(0.1)
+
+def open_koala():
+    user_identification_image = cv2.imread(r'spatial_averaging/images/user_identification.png')
+    wd = os.getcwd()
+    os.chdir(r"C:\Program Files\LynceeTec\Koala")
+    subprocess.Popen(r"C:\Program Files\LynceeTec\Koala\Koala")
+    os.chdir(wd)
+    
+    id_pos = None
+    while id_pos is None:
+        koala_to_the_front()
+        screenshot = pyautogui.screenshot()
+        id_pos = find_image_position(screenshot, user_identification_image, threshold=0.45)
+    
+    # Type credentials
+    koala_to_the_front()
+    pyautogui.click(id_pos, interval=0.0)
+    pyautogui.typewrite('admin', interval=0.0)
+    pyautogui.press('tab', interval=0.0)
+    pyautogui.typewrite('admin', interval=0.0)
+    pyautogui.press('enter', interval=0.0)
+    
+    
+def connect_to_remote_koala():
+    remote_log_icon = cv2.imread(r'spatial_averaging/images/remote_log_icon.png')
+    host = client.pyKoalaRemoteClient()
+    connected = host.Connect('localhost')
+    while not connected:
+        koala_to_the_front()
+        screenshot = pyautogui.screenshot()
+        log_icon_pos = find_image_position(screenshot, remote_log_icon)
+        pyautogui.click(log_icon_pos, interval=0.0)
+        connected = host.Connect('localhost')
+    host.Login('admin')
+    return host
+
 def is_screen_active():
     user32 = ctypes.windll.user32
     return user32.GetForegroundWindow() != 0
@@ -256,10 +287,7 @@ class Koala:
         except:
             cls._host = None
         if cls._host is None:
-            host = client.pyKoalaRemoteClient()
-            host.Connect('localhost')
-            host.Login('admin')
-            cls._host = host
+            cls._host = connect_to_remote_koala()
         
         if config_number is not None:
             cls._host.OpenConfig(config_number)

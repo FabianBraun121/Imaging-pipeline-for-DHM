@@ -35,9 +35,13 @@ class ConfigEditorGUI:
         self.notebook.add(self.reconstruction_tab, text="Reconstruction")
         self.create_reconstruction_tab()
         
-        # self.delta_tab = ttk.Frame(self.notebook)
-        # self.notebook.add(self.delta_tab, text="Delta")
-        # self.create_delta_tab()
+        self.create_image_type_tab('BF')
+        self.create_image_type_tab('PC')
+        
+        self.delta_tab = ttk.Frame(self.notebook)
+        self.notebook.add(self.delta_tab, text="Delta")
+        self.create_delta_tab()
+        
         
     def close_editor(self):
         if not os.path.isdir(self.base_dir_var.get()):
@@ -50,7 +54,7 @@ class ConfigEditorGUI:
     def bind_events(self, widget, events, handler):
         for event in events:
             widget.bind(event, handler)
-    
+            
     
     
     ###################################### General TAB ######################################
@@ -221,8 +225,8 @@ class ConfigEditorGUI:
     def create_recon_settings_frame(self, tab):
         frame = ttk.Frame(tab)
         tk.Label(frame, text='Reconstruction settings').pack()
-        self.create_number_entry(frame, 'reconstruction_distance_low', 'Dist. low', self.update_recon_dist)
-        self.create_number_entry(frame, 'reconstruction_distance_high', 'Dist. high', self.update_recon_dist)
+        self.create_number_entry(frame, 'reconstruction_distance_low', 'Dist. low', self.update_float_entry)
+        self.create_number_entry(frame, 'reconstruction_distance_high', 'Dist. high', self.update_float_entry)
         self.create_number_entry(frame, 'plane_fit_order', 'Sub. plane degree', self.update_int_entry)
         self.create_number_entry(frame, 'nfev_max', 'Max. func. eval.', self.update_int_entry)
         return frame
@@ -235,7 +239,7 @@ class ConfigEditorGUI:
         tk.Label(frame, text=label_text).pack(side='left', padx=(15,5))
         entry.pack(side='left')
     
-    def update_recon_dist(self, name):
+    def update_float_entry(self, name):
         try:
             dist = float(getattr(self, f"{name}_var").get())
             getattr(self, f"{name}_var").set(dist)
@@ -386,49 +390,189 @@ class ConfigEditorGUI:
             methods.append(method)
         self.cfg.set_config_setting('focus_method', tuple(methods))
 
-    ###################################### Reconstruction TAB ######################################
-    # def create_delta_tab(self):
-    #     self.create_delta_core_frame(self.delta_tab).pack(pady=10)
-    
-    # ######### Delta TAB: core frame #########
-    # def create_delta_core_frame(self, tab):
-    #     frame = ttk.Frame(tab)
-    #     core_frame = ttk.Frame(frame)
+
+    ###################################### IMAGE TYPE TAB ######################################
+    def create_image_type_tab(self, image_type):
+        frame = ttk.Frame(self.notebook)
+        setattr(self, f'{image_type.lower()}_tab', frame)
+        self.notebook.add(getattr(self, f'{image_type.lower()}_tab'), text=f'{image_type} Images')
         
-    #     delta_bacteria_core_var = tk.StringVar(value=self.cfg.get_config_setting('delta_bacteria_core'))
-    #     setattr(self, 'delta_bacteria_core_var', delta_bacteria_core_var)
-    #     combobox = ttk.Combobox(core_frame, textvariable=delta_bacteria_core_var, values=['PH', 'BF'], width=5)
-    #     combobox.bind("<<ComboboxSelected>>", lambda event: self.update_bacteria_core())
-    #     tk.Label(core_frame, text='Core caluclated on').pack(side='left', padx=5)
-    #     combobox.pack(side='left', padx=5)
-    #     core_frame.pack()
+        cb_frame = ttk.Frame(frame)
+        var = tk.BooleanVar(value=image_type in self.cfg.get_config_setting('additional_image_types'))
+        setattr(self, f'{image_type.lower()}_var', var)
+        checkbutton = tk.Checkbutton(cb_frame, variable=var, command=lambda: self.toggle_image_type(image_type))
+        tk.Label(cb_frame, text=f'Process {image_type} Images').pack(side='left')
+        checkbutton.pack(side='left')
+        cb_frame.pack(pady=5)
         
-    #     core_type = delta_bacteria_core_var.get().lower()
-    #     var = tk.StringVar(value=self.cfg.get_config_setting(f'model_file_{core_type}_core_seg'))
-    #     setattr(self, f'model_file_{core_type}_core_seg_var', var)
-    #     entry = tk.Entry(frame, textvariable=var, width=80)
-    #     self.bind_events(entry, ("<FocusOut>", "<Return>"), lambda event: self.update_file_path(f'model_file_{core_type}_core_seg'))
+        corners_frame = ttk.Frame(frame)
+        for i, corner in enumerate(['ymin', 'ymax', 'xmin', 'xmax']):
+            var = tk.StringVar(value=self.cfg.get_config_setting(f'{image_type.lower()}_cut')[i//2][i%2])
+            setattr(self, f'{image_type.lower()}_{corner}_var', var)
         
-    
-    # def update_file_path(self, config_variable):
-    #     path = os.path.normpath(getattr(self, f"{config_variable}_var").get())
-    #     if os.path.isfile(path):
-    #         getattr(self, f"{config_variable}_var").set(path)
-    #         self.cfg.set_config_setting(config_variable, path)
-    #     else:
-    #         tk.messagebox.showerror("Error", "File does not exist")
-    #         self.base_dir_entry_var.set(self.cfg.get_config_setting(config_variable))
+            entry = tk.Entry(corners_frame, text=corner, textvariable=var, width=10)
+            entry['state'] = tk.NORMAL if getattr(self, f'{image_type.lower()}_var').get() else tk.DISABLED
+            setattr(self, f'{image_type.lower()}_{corner}_entry', entry)
+            self.bind_events(entry, ("<FocusOut>", "<Return>"), lambda event: self.update_image_type_corners(image_type))
+        for corner in ['xmin', 'xmax', 'ymin', 'ymax']:
+            tk.Label(corners_frame, text=corner).pack(side='left')
+            getattr(self, f"{image_type.lower()}_{corner}_entry").pack(padx=(5,10), side='left')
+        button = tk.Button(corners_frame, text="Select Corners on Image", command=lambda: self.select_corners_on_image(image_type))
+        button.pack(padx=10)
+        corners_frame.pack(pady=5)
+        
+        searches_frame = ttk.Frame(frame)
+        var = tk.StringVar(value=self.cfg.get_config_setting(f'{image_type.lower()}_local_searches'))
+        setattr(self, f'{image_type.lower()}_local_searches_var', var)
+        entry = tk.Entry(searches_frame, textvariable=var, width=5)
+        entry['state'] = tk.NORMAL if getattr(self, f'{image_type.lower()}_var').get() else tk.DISABLED
+        setattr(self, f'{image_type.lower()}_local_searches_entry', entry)
+        self.bind_events(entry, ("<FocusOut>", "<Return>"), lambda event: self.update_int_entry(f'{image_type.lower()}_local_searches'))
+        tk.Label(searches_frame, text='Grid searches: ').pack(side='left')
+        entry.pack(padx=5, side='left')
+        searches_frame.pack(pady=5)
+        
+        grid_search_frame = ttk.Frame(frame)
+        self.create_gride_side_frame(grid_search_frame, image_type, 'rot', 'Rotation').pack(side='left', padx=20)
+        self.create_gride_side_frame(grid_search_frame, image_type, 'zoom', 'Zoom').pack(side='right', padx=20)
+        grid_search_frame.pack()
+        
+        
+    def create_gride_side_frame(self, frame, image_type, variable, text):
+        frame = ttk.Frame(frame)
+        tk.Label(frame, text=text).pack()
+        self.create_float_entry_frame(frame, image_type, f'{image_type.lower()}_{variable}_guess', 'Guess: ').pack(side='left')
+        self.create_float_entry_frame(frame, image_type, f'{image_type.lower()}_{variable}_search_length', 'Search length: ').pack(side='left')
+        return frame
+        
+    def create_float_entry_frame(self, frame, image_type, name, text):
+        frame = ttk.Frame(frame)
+        var = tk.StringVar(value=self.cfg.get_config_setting(name))
+        setattr(self, f'{name}_var', var)
+        entry = tk.Entry(frame, textvariable=var, width=5)
+        entry['state'] = tk.NORMAL if getattr(self, f'{image_type.lower()}_var').get() else tk.DISABLED
+        setattr(self, f'{name}_entry', entry)
+        self.bind_events(entry, ("<FocusOut>", "<Return>"), lambda event: self.update_float_entry(name))
+        tk.Label(frame, text=text).pack(side='left')
+        entry.pack(side='left', padx=(5,10))
+        return frame
+        
             
+    def select_corners_on_image(self, image_type):
+        pass
+    
+    def toggle_image_type(self, image_type):
+        if getattr(self, f'{image_type.lower()}_var').get():
+            state = tk.NORMAL
+            image_types = tuple(tuple(self.cfg.get_config_setting('additional_image_types')) + (image_type,))
+        else:
+            state = tk.DISABLED
+            image_types = tuple(x for x in self.cfg.get_config_setting('additional_image_types') if x != image_type)
+        self.cfg.set_config_setting('additional_image_types', image_types)
+        for corner in ['ymin', 'ymax', 'xmin', 'xmax']:
+            entry = getattr(self, f"{image_type.lower()}_{corner}_entry")
+            entry['state'] = state
+        getattr(self, f"{image_type.lower()}_local_searches_entry")['state'] = state
+        for i in ['rot', 'zoom']:
+            for j in ['guess', 'search_length']:
+                getattr(self, f"{image_type.lower()}_{i}_{j}_entry")['state'] = state
+        
+    def update_image_type_corners(self, image_type):
+        xmin = getattr(self, f"{image_type.lower()}_xmin_var").get()
+        xmax = getattr(self, f"{image_type.lower()}_xmax_var").get()
+        ymin = getattr(self, f"{image_type.lower()}_ymin_var").get()
+        ymax = getattr(self, f"{image_type.lower()}_ymax_var").get()
+        self.cfg.set_config_setting('{image_type.lower()}_cut', ((ymin,ymax),(xmin,xmax)))
+    
+        
+        
+    ###################################### DELTA TAB ######################################
+    def create_delta_tab(self):
+        self.create_delta_core_frame(self.delta_tab).pack(pady=10)
+    
+    ######### Delta TAB: core frame #########
+    def create_delta_core_frame(self, tab):
+        frame = ttk.Frame(tab)
+        core_type_frame = ttk.Frame(frame)
+        
+        delta_bacteria_core_var = tk.StringVar(value=self.cfg.get_config_setting('delta_bacteria_core'))
+        setattr(self, 'delta_bacteria_core_var', delta_bacteria_core_var)
+        combobox = ttk.Combobox(core_type_frame, textvariable=delta_bacteria_core_var, values=['PH', 'BF'], width=5)
+        combobox.bind("<<ComboboxSelected>>", lambda event: self.update_bacteria_core())
+        tk.Label(core_type_frame, text='Core caluclated on').pack(side='left', padx=5)
+        combobox.pack(side='left', padx=5)
+        core_type_frame.pack()
+        
+        self.create_path_input_frame(frame, 'core_seg', 'Segmentation:')
+        self.create_path_input_frame(frame, 'track', 'Tracking:')
+        
+        tk.Label(frame, text='Full bacteria Segmentation:').pack(pady=(10,0))
+        path_frame = ttk.Frame(frame)
+        var = tk.StringVar(value=self.cfg.get_config_setting('model_file_ph_full_seg'))
+        setattr(self, 'model_file_ph_full_seg', var)
+        entry = tk.Entry(path_frame, textvariable=var, width=110)
+        self.bind_events(entry, ("<FocusOut>", "<Return>"), lambda event: self.update_full_file_path())
+        button = tk.Button(path_frame, text="Select Folder", command=lambda: self.select_full_file())
+        entry.pack(side='left')
+        button.pack(side='right')
+        path_frame.pack()
+        
+        return frame
+    
+    def create_path_input_frame(self, frame, process, titletext):
+        tk.Label(frame, text=titletext).pack(pady=(10,0))
+        path_frame = ttk.Frame(frame)
+        core_type = getattr(self, 'delta_bacteria_core_var').get().lower()
+        var = tk.StringVar(value=self.cfg.get_config_setting(f'model_file_{core_type}_{process}'))
+        setattr(self, f'model_file_{process}_var', var)
+        entry = tk.Entry(path_frame, textvariable=var, width=110)
+        self.bind_events(entry, ("<FocusOut>", "<Return>"), lambda event: self.update_file_path(process))
+        button = tk.Button(path_frame, text="Select Folder", command=lambda: self.select_file(process))
+        entry.pack(side='left')
+        button.pack(side='right')
+        path_frame.pack()
+        return path_frame
+    
+    def select_file(self, process):
+        selected_file = filedialog.askopenfilename()
+        if selected_file:
+            normalized_path = os.path.normpath(selected_file)
+            getattr(self, f'model_file_{process}_var').set(normalized_path)
+            core_type = getattr(self, "delta_bacteria_core_var").get().lower()
+            self.cfg.set_config_setting(f'model_file_{core_type}_{process}', normalized_path)
+    
+    def select_full_file(self):
+        selected_file = filedialog.askopenfilename()
+        if selected_file:
+            normalized_path = os.path.normpath(selected_file)
+            getattr(self, 'model_file_ph_full_seg_var').set(normalized_path)
+            self.cfg.set_config_setting('model_file_ph_full_seg', normalized_path)
             
-    # def select_file(self, config_variable):
-    #     selected_folder = filedialog.askdirectory()
-    #     if selected_folder:
-    #         normalized_path = os.path.normpath(selected_folder)
-    #         entry_var = getattr(self, f"{config_variable}_var")
-    #         entry_var.set(normalized_path)
-    #         self.cfg.set_config_setting(config_variable, normalized_path)
-    #         if config_variable == 'base_dir':
-    #             self.update_saving_dir_from_base_dir()
+    def update_bacteria_core(self):
+        core_type = getattr(self, "delta_bacteria_core_var").get()
+        self.cfg.set_config_setting('delta_bacteria_core', core_type)
+        getattr(self, "model_file_core_seg_var").set(self.cfg.get_config_setting(f'model_file_{core_type.lower()}_core_seg'))
+        getattr(self, "model_file_track_var").set(self.cfg.get_config_setting(f'model_file_{core_type.lower()}_track')) 
+    
+    def update_file_path(self, process):
+        path = os.path.normpath(getattr(self, "model_file_{process}_var").get())
+        core_type = getattr(self, "delta_bacteria_core_var").get().lower()
+        if os.path.isfile(path):
+            getattr(self, "model_file_{process}_var").set(path)
+            self.cfg.set_config_setting(f'model_file_{core_type}_{process}', path)
+        else:
+            tk.messagebox.showerror("Error", "File does not exist")
+            getattr(self, "model_file_{process}_var").set(self.cfg.get_config_setting(f'model_file_{core_type}_{process}'))
+    
+    def update_full_file_path(self):
+        path = os.path.normpath(getattr(self, "model_file_ph_full_seg_var").get())
+        if os.path.isfile(path):
+            getattr(self, "model_file_ph_full_seg_var").set(path)
+            self.cfg.set_config_setting('model_file_ph_full_seg', path)
+        else:
+            tk.messagebox.showerror("Error", "File does not exist")
+            getattr(self, "model_file_ph_full_seg_var").set(self.cfg.get_config_setting('model_file_ph_full_seg'))
+        
         
         
 def run_gui(config):

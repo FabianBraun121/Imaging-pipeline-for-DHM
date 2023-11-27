@@ -15,7 +15,7 @@ from gui import run_gui
 config = Config()
 run_gui(config)
 
-#%%
+
 ################# spatial averaging ####################################
 pipe = sa.pipeline.Pipeline(config)
 pipe.process()

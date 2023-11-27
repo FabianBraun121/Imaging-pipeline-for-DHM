@@ -55,7 +55,7 @@ DEFAULT_CONFIG = {
     # ".tif, .bin or delta. If delta is selected images names are selected that work with delta.
     # BF images are always saved as .tif"
     "save_as_bulk": False,
-    "additional_image_types": ('BF'),
+    "additional_image_types": ('BF',),
     # "Is there a bf (brightfield) image and should it be evaluated"
     "bf_cut": ((512, 1536), (512, 1536)),
     # "BF image is usually much bigger then the DHM phase image, only a part is used to speed up process"
