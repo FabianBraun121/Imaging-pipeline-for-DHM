@@ -12,6 +12,7 @@ from config import Config
 import tifffile
 import numpy as np
 import filecmp
+import shutil
 
 def are_images_similar(image_path1, image_path2, pixel_threshold=0.01):
     # Open the TIFF images using tifffile
@@ -20,6 +21,7 @@ def are_images_similar(image_path1, image_path2, pixel_threshold=0.01):
 
     # Check if the shape of the arrays is the same
     if img1.shape != img2.shape:
+        print()
         return False
 
     # Calculate the absolute pixel-wise difference
@@ -65,14 +67,15 @@ pipe = sa.pipeline.Pipeline(config, base_dir=base_dir)
 if select_recon_rectangle:
     pipe.select_positions_recon_rectangle(same_for_all_pos = True, recon_corners=((100,700),(100,700)))
 pipe.process()
-[os.remove(os.path.join(pipe.saving_dir, j)) for j in os.listdir(pipe.saving_dir) if j.endswith('.json')]
 
-folder_path1 = pipe.saving_dir
+[os.remove(os.path.join(pipe.cfg.get_config_setting('saving_dir'), j)) for j in os.listdir(pipe.cfg.get_config_setting('saving_dir')) if j.endswith('.json')]
+
+folder_path1 = pipe.cfg.get_config_setting('saving_dir')
 folder_path2 = os.getcwd() + os.sep + r'..\data\test_data reference'
 
 if are_folders_similar(folder_path1, folder_path2, pixel_threshold=0.01):
     print("Test passed")
 else:
     print("Test not passed. Wrong output")
-
+shutil.rmtree(pipe.cfg.get_config_setting('saving_dir'))
 

@@ -439,6 +439,8 @@ class Pipeline:
             self.cfg.set_config_setting('base_dir', str(base_dir))
         "Path to the directory where the experiment is saved"
         self.cfg.set_config_setting('saving_dir', str(self._saving_dir(saving_dir)))
+        if not os.path.exists(self.cfg.get_config_setting('saving_dir')):
+            os.makedirs(self.cfg.get_config_setting('saving_dir'))
         "Path to the directory where the processed images should be saved"
         if restrict_positions is not None:
             self.cfg.set_config_setting('restrict_positions', restrict_positions)
