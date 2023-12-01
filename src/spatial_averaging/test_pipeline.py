@@ -8,7 +8,7 @@ import os
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
 
 import spatial_averaging as sa
-import config
+from config import Config
 import tifffile
 import numpy as np
 import filecmp
@@ -56,11 +56,12 @@ def are_folders_similar(folder1, folder2, pixel_threshold=0.01):
     return True
 
 koala_config_nr = 279
+config = Config(koala_config_nr)
+config.set_config_setting('additional_image_types', ('BF','PC',))
 select_recon_rectangle = True
 base_dir = os.getcwd() + os.sep + r'..\data\test_data'
 
-config.load_config(koala_config_nrIn=koala_config_nr, save_formatIn='.tif', save_in_same_folderIn=False)
-pipe = sa.pipeline.Pipeline(base_dir=base_dir)
+pipe = sa.pipeline.Pipeline(config, base_dir=base_dir)
 if select_recon_rectangle:
     pipe.select_positions_recon_rectangle(same_for_all_pos = True, recon_corners=((100,700),(100,700)))
 pipe.process()

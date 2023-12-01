@@ -6,9 +6,19 @@ Created on Fri Nov 17 10:46:41 2023
 """
 import os
 os.chdir(os.path.dirname(__file__))
+import sys
 import tkinter as tk
-from tkinter import ttk, filedialog
+from tkinter import ttk, filedialog, messagebox
 from config import Config
+import tifffile
+import numpy as np
+import skimage.transform as trans
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+import pygetwindow as gw
+
+sys.path.append("..")
+from src.spatial_averaging.utilities import PolynomialPlaneSubtractor, Koala
 
 class ConfigEditorGUI:
     def __init__(self, root, config):
@@ -148,22 +158,19 @@ class ConfigEditorGUI:
         min_entry["state"] = state
         max_entry["state"] = state
         getattr(self, f"{config_variable}_min_var").set(0)
-        getattr(self, f"{config_variable}_max_var").set(0)
+        getattr(self, f"{config_variable}_max_var").set(-1)
         if all_var.get():
             self.cfg.set_config_setting(config_variable, None)
         else:
-            self.cfg.set_config_setting(config_variable, (0,0))
+            self.cfg.set_config_setting(config_variable, (0,-1))
             
             
     def update_min_max(self, config_variable):
         min_value = int(getattr(self, f"{config_variable}_min_var").get())
         max_value = int(getattr(self, f"{config_variable}_max_var").get())
-        if min_value >= 0 and max_value >= 0:
-            getattr(self, f"{config_variable}_min_var").set(min_value)
-            getattr(self, f"{config_variable}_max_var").set(max_value)
-            self.cfg.set_config_setting(config_variable, (min_value, max_value))
-        else:
-            tk.messagebox.showerror("Error", "Invalid Min or Max")
+        getattr(self, f"{config_variable}_min_var").set(min_value)
+        getattr(self, f"{config_variable}_max_var").set(max_value)
+        self.cfg.set_config_setting(config_variable, (min_value, max_value))
     
     
     ######### General TAB: select save option frame #########
@@ -243,7 +250,7 @@ class ConfigEditorGUI:
         try:
             dist = float(getattr(self, f"{name}_var").get())
             getattr(self, f"{name}_var").set(dist)
-            self.cfg.set_config_setting('name', dist)
+            self.cfg.set_config_setting(name, dist)
         except ValueError:
             tk.messagebox.showerror("Error", "Needs to be an number")
     
@@ -251,38 +258,38 @@ class ConfigEditorGUI:
         try:
             dist = int(getattr(self, f"{name}_var").get())
             getattr(self, f"{name}_var").set(dist)
-            self.cfg.set_config_setting('name', dist)
+            self.cfg.set_config_setting(name, dist)
         except ValueError:
             tk.messagebox.showerror("Error", "Needs to be an number")
             
     ######### Reconstruction TAB: recon frame #########
     def create_recon_size_frame(self, tab):
         frame = ttk.Frame(tab)        
-        corner_vars = {}
-        corner_entries = {}
         
         for corner in ['xmin', 'xmax', 'ymin', 'ymax']:
             var = tk.StringVar(value='0')
             setattr(self, f"recon_{corner}_var", var)
-            corner_vars[corner] = var
         
             entry = tk.Entry(frame, text=corner, textvariable=var, width=10)
             entry['state'] = tk.DISABLED
+            setattr(self, f"recon_{corner}_entry", entry)
             self.bind_events(entry, ("<FocusOut>", "<Return>"), lambda event, func=self.update_recon_corners: func())
-            corner_entries[corner] = entry
         
         recon_var = tk.BooleanVar(value=False)
+        setattr(self, "recon_var", recon_var)
+        recon_checkbutton = tk.Checkbutton(frame, variable=recon_var, command=lambda: self.toggle_recon())
+        
         recon_all_the_same_var = tk.BooleanVar(value=False)
+        setattr(self, "recon_all_the_same_var", recon_all_the_same_var)
+        recon_all_the_same_checkbutton = tk.Checkbutton(frame, variable=recon_all_the_same_var, command=lambda: self.toggle_recon_corners())
+        setattr(self, "recon_all_the_same_checkbutton", recon_all_the_same_checkbutton)
+        
         recon_select_on_image_var = tk.BooleanVar(value=False)
-        recon_all_the_same_checkbutton = tk.Checkbutton(frame, variable=recon_all_the_same_var,
-                                                        command=lambda: self.toggle_recon_corners(recon_select_on_image_var, recon_all_the_same_var, corner_entries,
-                                                                                                  recon_var, recon_all_the_same_checkbutton, recon_select_on_image_checkbutton))
-        recon_select_on_image_checkbutton = tk.Checkbutton(frame, variable=recon_select_on_image_var,
-                                                           command=lambda: self.toggle_recon_corners(recon_select_on_image_var, recon_all_the_same_var, corner_entries,
-                                                                                                     recon_var, recon_all_the_same_checkbutton, recon_select_on_image_checkbutton))
-        recon_checkbutton = tk.Checkbutton(frame, variable=recon_var,
-                                           command=lambda: self.toggle_recon(recon_var, recon_all_the_same_checkbutton, recon_select_on_image_checkbutton, corner_entries))
-        self.toggle_recon(recon_var, recon_all_the_same_checkbutton, recon_select_on_image_checkbutton, corner_entries)
+        setattr(self, "recon_select_on_image_var", recon_select_on_image_var)
+        recon_select_on_image_checkbutton = tk.Checkbutton(frame, variable=recon_select_on_image_var, command=lambda: self.toggle_recon_corners())
+        setattr(self, "recon_select_on_image_checkbutton", recon_select_on_image_checkbutton)
+        
+        self.toggle_recon()
         tk.Label(frame, text='Reconstruction rectangle').pack()
         tk.Label(frame, text='Change').pack(side='left')
         recon_checkbutton.pack(side='left', padx=(0,5))
@@ -292,25 +299,24 @@ class ConfigEditorGUI:
         recon_select_on_image_checkbutton.pack(side='left')
         for corner in ['xmin', 'xmax', 'ymin', 'ymax']:
             tk.Label(frame, text=corner).pack(side='left')
-            corner_entries[corner].pack(side='left')
+            getattr(self, f"recon_{corner}_entry").pack(side='left')
         return frame
     
-    def toggle_recon(self, recon_var, recon_all_the_same_checkbutton, recon_select_on_image_checkbutton, corner_entries):
-        if recon_var.get():
+    def toggle_recon(self):
+        if getattr(self, "recon_var").get():
             state = tk.NORMAL
         else:
             state = tk.DISABLED
-            for corner in ['xmin', 'xmax', 'ymin', 'ymax']:
-                corner_entries[corner]['state'] = state
-        recon_all_the_same_checkbutton["state"] = state
-        recon_select_on_image_checkbutton["state"] = state
-        self.cfg.set_config_setting('recon_rectangle', recon_var.get())
+            self.cfg.set_config_setting('recon_corners', None)
+        getattr(self, "recon_all_the_same_checkbutton")["state"] = state
+        getattr(self, "recon_select_on_image_checkbutton")["state"] = state
+        self.toggle_recon_corners()
+        self.cfg.set_config_setting('recon_rectangle', getattr(self, "recon_var").get())
     
-    def toggle_recon_corners(self, recon_select_on_image_var, recon_all_the_same_var, corner_entries,
-                             recon_var, recon_all_the_same_checkbutton, recon_select_on_image_checkbutton):
-        self.cfg.set_config_setting('recon_select_on_image', recon_select_on_image_var.get())
-        self.cfg.set_config_setting('recon_all_the_same', recon_all_the_same_var.get())
-        if not recon_select_on_image_var.get() and recon_all_the_same_var.get():
+    def toggle_recon_corners(self):
+        self.cfg.set_config_setting('recon_select_on_image', getattr(self, "recon_select_on_image_var").get())
+        self.cfg.set_config_setting('recon_all_the_same', getattr(self, "recon_all_the_same_var").get())
+        if not getattr(self, "recon_select_on_image_var").get() and getattr(self, "recon_all_the_same_var").get() and getattr(self, "recon_var").get():
             state = tk.NORMAL
             self.cfg.set_config_setting('recon_corners', ((0,0),(0,0)))
         else:
@@ -318,14 +324,13 @@ class ConfigEditorGUI:
             self.cfg.set_config_setting('recon_corners', None)
         for corner in ['xmin', 'xmax', 'ymin', 'ymax']:
             getattr(self, f"recon_{corner}_var").set(0)
-            corner_entries[corner]['state'] = state
-        self.toggle_recon(recon_var, recon_all_the_same_checkbutton, recon_select_on_image_checkbutton, corner_entries)
+            getattr(self, f"recon_{corner}_entry")['state'] = state
         
     def update_recon_corners(self):
-        xmin = self.recon_xmin_var.get()
-        xmax = self.recon_xmax_var.get()
-        ymin = self.recon_ymin_var.get()
-        ymax = self.recon_ymax_var.get()
+        xmin = int(self.recon_xmin_var.get())
+        xmax = int(self.recon_xmax_var.get())
+        ymin = int(self.recon_ymin_var.get())
+        ymax = int(self.recon_ymax_var.get())
         self.cfg.set_config_setting('recon_corners', ((ymin,ymax),(xmin,xmax)))
         
     ######### Reconstruction TAB: focus search #########
@@ -459,7 +464,36 @@ class ConfigEditorGUI:
         
             
     def select_corners_on_image(self, image_type):
-        pass
+        base_dir = self.cfg.get_config_setting('base_dir')
+        if base_dir is None:
+            tk.messagebox.showerror("Error", "Select a base dir first")
+            return
+        if not os.path.isdir(base_dir):
+            tk.messagebox.showerror("Error", "Base directory is not valid")
+            return
+        pos_dir = base_dir + os.sep + os.listdir(base_dir)[0]
+        image_type_file_paths = [pos_dir + os.sep + f for f in os.listdir(pos_dir) if f.endswith(f'{image_type}.tif')]
+        if len(image_type_file_paths) == 0:
+            tk.messagebox.showerror("Error", f"No {image_type} in expected folder: {pos_dir}")
+            return
+        if not isinstance(self.cfg.get_config_setting('koala_config_nr'), int):
+            tk.messagebox.showerror("Error", "Select a Koala configuration number")
+            return
+        holo_dir = pos_dir + os.sep + [f for f in os.listdir(pos_dir) if os.path.isdir(pos_dir+ os.sep + f)][0] + os.sep + 'Holograms'
+        holo_path = holo_dir + os.sep + os.listdir(holo_dir)[0]
+        Koala.connect(self.cfg.get_config_setting('koala_config_nr'))
+        Koala.load_hologram(holo_path)
+        Koala._host.SetUnwrap2DState(True)
+        Koala.set_reconstruction_distance((self.cfg.get_config_setting('reconstruction_distance_low')+self.cfg.get_config_setting('reconstruction_distance_high'))/2)
+        ph = Koala.get_phase_image()
+        ph = PolynomialPlaneSubtractor.subtract_plane(ph, self.cfg.get_config_setting('plane_fit_order'))
+        
+        corners = RectangleSelector(image_type_file_paths, ph).get_corners()
+        self.cfg.set_config_setting('{image_type.lower()}_cut', corners)
+        for i, corner in enumerate(['ymin', 'ymax', 'xmin', 'xmax']):
+            getattr(self, f'{image_type.lower()}_{corner}_var').set(corners[i//2][i%2])
+        gw.getWindowsWithTitle("Config Editor")[0].activate()
+            
     
     def toggle_image_type(self, image_type):
         if getattr(self, f'{image_type.lower()}_var').get():
@@ -573,7 +607,66 @@ class ConfigEditorGUI:
             tk.messagebox.showerror("Error", "File does not exist")
             getattr(self, "model_file_ph_full_seg_var").set(self.cfg.get_config_setting('model_file_ph_full_seg'))
         
+
+class RectangleSelector:
+    def __init__(self, image_path, ref_image):
+        self.ref_image = ref_image
+        self.image_path = image_path
+        self.image = trans.rotate(np.fliplr(np.array(tifffile.imread(image_path))), -90, mode="edge")
+        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2, figsize=(10, 5))
+        self.ax1.set_title("Select by clicking the top left corner")
+        self.ax2.set_title("Reference phase image")
+        self.ax1.imshow(self.image)
+        self.ax2.imshow(ref_image)
+        self.output_shape = (1024,1024)
+        self.x = None
+        self.y = None
+        self.rect = None
+        self.corners = None
+        self.enter_pressed = False
         
+        self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+        plt.show()
+        self.wait_for_enter()
+        
+    def on_click(self, event):
+        if self.rect is not None:
+            self.rect.remove()
+        self.x, self.y = int(event.xdata), int(event.ydata)
+        self.rect = Rectangle((self.x, self.y), self.output_shape[0], self.output_shape[1], edgecolor='r', facecolor='none')
+        self.ax1.add_patch(self.rect)
+        self.fig.canvas.draw()
+                
+    def wait_for_enter(self):
+        def on_key(event):
+            if event.key == 'enter':
+                self.enter_pressed = True
+
+        self.fig.canvas.mpl_connect('key_press_event', on_key)
+        while not self.enter_pressed:
+            plt.pause(0.1)
+        if self.rect is not None:
+            if 0<=self.y<self.image.shape[0]-self.output_shape[0] and 0<=self.x<self.image.shape[1]-self.output_shape[1]:
+                plt.close()
+                self.corners = ((self.y, self.y+self.output_shape[0]), (self.x, self.x+self.output_shape[1]))
+            else:
+                 self.show_popup("Error", "Invalid Rectangle")
+                 self.enter_pressed = False
+                 self.wait_for_enter()
+        else:
+            self.show_popup("Error", "Select a Rectangle by clicking on the image")
+            self.enter_pressed = False
+            self.wait_for_enter()
+        
+    def get_corners(self):
+        return self.corners
+    
+    @staticmethod
+    def show_popup(title, message):
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror(title, message)
+        root.destroy()
         
 def run_gui(config):
     root = tk.Tk()

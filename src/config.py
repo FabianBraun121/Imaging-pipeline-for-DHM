@@ -119,6 +119,6 @@ class Config:
     def set_config_setting(self, setting_name, value):
         self._config[setting_name] = value
 
-    def save_config(self):
-        with open(self.file_path, 'w') as f:
+    def save_config(self, save_path):
+        with open(save_path, 'w') as f:
             json.dump(self._config, f, indent=2)

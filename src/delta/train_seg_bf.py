@@ -29,7 +29,7 @@ batch_size = 1
 epochs = 300
 steps_per_epoch = 300
 validation_steps = 300
-patience = 10
+patience = 25
 
 # Data generator parameters:
 train_data_gen_args = dict(

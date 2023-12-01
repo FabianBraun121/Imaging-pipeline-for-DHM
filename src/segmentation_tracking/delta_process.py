@@ -124,34 +124,46 @@ class Delta_process:
         full_seg_weights = self.cfg.get_config_setting('model_file_ph_full_seg')
         full_seg = self._process_seg_images(delta_ph_folder, files_list, 'PH', full_seg_weights)
         
-        labeled_full_seg = self._watershed_labeled_cores_to_bacteria_outsides(label_stack, list(full_seg))
+        labeled_full_ph_seg = self._watershed_labeled_cores_to_bacteria_outsides(label_stack, list(full_seg))
         data = []
         seg_folder = Path(self.cfg.get_config_setting('delta_saving_dir'), 'SEG')
         if not os.path.exists(seg_folder): 
             os.makedirs(seg_folder)
+            
+        seg__folder = Path(self.cfg.get_config_setting('delta_saving_dir'), 'SEG_')
+        if not os.path.exists(seg__folder): 
+            os.makedirs(seg__folder)
         
         for i in range(len(files_list)):
             ph_image = tifffile.imread(Path(ph_folder, f'{files_list[i]}_PH.tif'))
-            regions = regionprops(labeled_full_seg[i])
-            tifffile.imwrite(Path(seg_folder, f'{files_list[i]}.tif'), labeled_full_seg[i])
+            regions = regionprops(labeled_full_ph_seg[i])
+            tifffile.imwrite(Path(seg__folder, f'{files_list[i]}.tif'), label_stack[i])
+            tifffile.imwrite(Path(seg_folder, f'{files_list[i]}.tif'), labeled_full_ph_seg[i])
             for props in regions:
-                mean_opl_nm = np.mean(ph_image[labeled_full_seg[i]==props.label]) * self.cfg.get_config_setting('hconv')
+                mean_opl_nm = np.mean(ph_image[labeled_full_ph_seg[i]==props.label]) * self.cfg.get_config_setting('hconv')
                 integrated_opl_μm_cubed = mean_opl_nm * 1e-3 * props.area * self.cfg.get_config_setting('px_size')**2
-                mass_pg = integrated_opl_μm_cubed / 0.18
+                mass_fg = integrated_opl_μm_cubed / 0.18 * 1000
                 row = {
                     'image_name': files_list[i],
                     'label': props.label,
                     'centroid': props.centroid,
-                    'area_px': props.area,
-                    'area_μm_sq': props.area * self.cfg.get_config_setting('px_size')**2,
-                    'length_px': props.major_axis_length,
-                    'length_μm': props.major_axis_length * self.cfg.get_config_setting('px_size'),
-                    'width_px': props.minor_axis_length,
-                    'width_μm': props.minor_axis_length * self.cfg.get_config_setting('px_size'),
+                    'full_ph_area_px': props.area,
+                    'full_ph_area_μm_sq': props.area * self.cfg.get_config_setting('px_size')**2,
+                    'full_ph_length_px': props.major_axis_length,
+                    'full_ph_length_μm': props.major_axis_length * self.cfg.get_config_setting('px_size'),
+                    'full_ph_width_px': props.minor_axis_length,
+                    'full_ph_width_μm': props.minor_axis_length * self.cfg.get_config_setting('px_size'),
                     'mean_opl_nm': mean_opl_nm,
                     'integrated_opl_μm_cubed': integrated_opl_μm_cubed,
-                    'mass_pg': mass_pg
+                    'mass_fg': mass_fg
                     }
+                seg_props = regionprops((label_stack[i]==props.label).astype(np.uint8))[0]
+                row['seg_area_px'] = seg_props.area
+                row['seg_area_μm_sq'] = seg_props.area * self.cfg.get_config_setting('px_size')**2
+                row['seg_length_px'] = seg_props.major_axis_length
+                row['seg_length_μm'] = seg_props.major_axis_length * self.cfg.get_config_setting('px_size')
+                row['seg_width_px'] = seg_props.minor_axis_length
+                row['seg_width_μm'] = seg_props.minor_axis_length * self.cfg.get_config_setting('px_size')
                 data.append(row)
         pd.DataFrame(data).to_csv(Path(saving_delta_dir, 'bacteria_data.csv'), index=False)
             
@@ -224,6 +236,13 @@ class Delta_process:
             # features needs to be processed so label_stack gets claculated
             delta_core_position.features(frames=frames)
             
+            # Extract seg features:
+            features = ("length", "width", "area", "perimeter", "edges")
+            delta_core_position.features(frames=frames, features=features)
+            for cell in delta_core_position.rois[0].lineage.cells:
+                for feature in features:
+                    cell[f'seg_{feature}'] = cell[feature]
+            
             # watershed to the full bacteria
             full_bacteria_models = dict()
             full_bacteria_dir = str(pos_dir) + os.sep + 'full_bacteria'
@@ -236,7 +255,7 @@ class Delta_process:
             delta_full_position.preprocess(rotation_correction=False)
             delta_full_position.segment(frames=frames)
             
-            
+            # replace seg stacks and reader with full phase stacks and reader
             delta_core_position.rois[0].label_stack = self._watershed_labeled_cores_to_bacteria_outsides(delta_core_position.rois[0].label_stack,
                                                                                                          delta_full_position.rois[0].seg_stack)
             delta_core_position.rois[0].img_stack = delta_full_position.rois[0].img_stack
@@ -268,7 +287,6 @@ class Delta_process:
         label_stack_out = []
         for i in range(len(label_stack)):
             distance = distance_transform_edt(label_stack[i])
-            # label_stack[i] = watershed(-distance, label_stack[i], mask=seg_stack[i])
             label_stack_out.append(watershed(-distance, label_stack[i], mask=seg_stack[i]))
         return label_stack_out
     
@@ -276,7 +294,7 @@ class Delta_process:
         ph_fnames = [ph for ph in os.listdir(pos_dir) if 'PH' in ph]
         for i, ph_fname in enumerate(ph_fnames):
             fname_out = saving_pos_dir + os.sep + f"pos{str(self.filenamesindexing).zfill(5)}cha{self.filenamesindexing}fra{str(i+self.filenamesindexing).zfill(5)}.tif"
-            self.read_rescale_save_ph_image(pos_dir + os.sep + ph_fname, fname_out)
+            self._read_rescale_save_ph_image(pos_dir + os.sep + ph_fname, fname_out)
     
     def _read_rescale_save_ph_image(self, fpath_in, fpath_out):
         ph_image = tifffile.imread(fpath_in)

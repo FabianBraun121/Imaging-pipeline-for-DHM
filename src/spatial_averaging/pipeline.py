@@ -19,11 +19,9 @@ from typing import List, Union, Tuple
 from pathlib import Path
 from skimage.registration import phase_cross_correlation
 from scipy import ndimage
-import tkinter as tk
 
 sys.path.append("..")
 from src.config import Config
-from src.gui import ConfigEditorGUI
 from src.spatial_averaging.utilities import (
     gradient_squared, grid_search_2d, zoom,
     PolynomialPlaneSubtractor, Koala, ValueTracker
@@ -438,17 +436,18 @@ class Pipeline:
         self.cfg: Config = config
         "All settings are saved in this config class"
         if base_dir is not None:
-            self.cfg.set_config_setting('base_dir', base_dir)
+            self.cfg.set_config_setting('base_dir', str(base_dir))
         "Path to the directory where the experiment is saved"
-        if saving_dir is not None:
-            self.cfg.set_config_setting('saving_dir', self._saving_dir(saving_dir))
+        self.cfg.set_config_setting('saving_dir', str(self._saving_dir(saving_dir)))
         "Path to the directory where the processed images should be saved"
         if restrict_positions is not None:
             self.cfg.set_config_setting('restrict_positions', restrict_positions)
         "Slice of the positions that should be processed"
         if restrict_timesteps is not None:
             self.cfg.set_config_setting('restrict_timesteps', restrict_timesteps)
-        "Range of the timesteps that should be processed"      
+        "Range of the timesteps that should be processed"
+        self.cfg.save_config(str(Path(self.cfg.get_config_setting('saving_dir'),'config.json')))
+        "Saves the configuration file to the output folder"
         self.positions: List[Position] = self._positions()
         "List of the positions that are processed"
         self.first_timestep: int = None
@@ -463,7 +462,7 @@ class Pipeline:
         Koala.connect(self.cfg.get_config_setting('koala_config_nr'))
         if self.cfg.get_config_setting('recon_rectangle'):
             self.select_positions_recon_rectangle(same_for_all_pos = self.cfg.get_config_setting('recon_all_the_same_var'),
-                                                  recon_corners=self.cfg.get_config_setting('recon_corners'))
+                                                  recon_corners= self.cfg.get_config_setting('recon_corners'))
             
     
     def _get_last_phase_image(self, po: Position, save_ph_pos: str, t: int):
@@ -604,10 +603,10 @@ class Pipeline:
     def _saving_dir(self, saving_dir: Union[str, Path]) -> Path:
         "returns the saveing dir"
         if saving_dir == None:
-            if self.cfg.get_config_setting('base_dir') != None:
+            if self.cfg.get_config_setting('saving_dir') == None:
                 saving_dir = Path(str(self.cfg.get_config_setting('base_dir')) + " processed")
             else:
-                return None
+                return self.cfg.get_config_setting('saving_dir')
         return Path(saving_dir)
     
     def select_positions_recon_rectangle(self, same_for_all_pos: bool = False, recon_corners: Tuple[Tuple[int]] = None):
@@ -649,13 +648,13 @@ class Pipeline:
         "returns the range of the timesteps processed"
         holo_path = str(self.cfg.get_config_setting('base_dir'))+os.sep+self.positions[0].pos_name + os.sep + "00001_00001\Holograms"
         self.first_timestep = int(sorted(os.listdir(holo_path))[0][:5])
+        num_timesteps = len(os.listdir(holo_path))
+        all_timesteps = range(self.first_timestep, self.first_timestep + num_timesteps)
         if self.cfg.get_config_setting('restrict_timesteps') == None:
-            num_timesteps = len(os.listdir(holo_path))
-            all_timesteps = range(self.first_timestep, self.first_timestep + num_timesteps)
             return all_timesteps
         else:
             min_timestep, max_timestep = self.cfg.get_config_setting('restrict_timesteps')
-            return range(min_timestep, max_timestep)
+            return all_timesteps[min_timestep:max_timestep]
     
     def _update_data_file(self, spa, time):
         "updates the data file with informations about the current averaged image"
