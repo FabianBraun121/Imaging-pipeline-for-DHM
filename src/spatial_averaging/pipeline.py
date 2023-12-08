@@ -172,6 +172,8 @@ class DHMImage:
         "number of function evaluations. Very high number of evaluations indicate hard cost function, which indicate corrupted image"
         self.cplx_image: CplxImage = None # as soon as the focus point is found this function is evaluated
         "complex image at the focus distance, is added when calculating the focus."
+        if self.focus is not None:
+            self._cplx_image()
     
     def calculate_focus(self):
         Koala.load_hologram(self.fname)
@@ -278,6 +280,7 @@ class DHMImage:
             self.cplx_image = np.exp(complex(0.,1.)*ph)
         
     def get_cplx_image(self) -> CplxImage:
+        assert self.focus is not None, "Focus has to be passed or calculated first"
         return self.cplx_image
 
 
@@ -620,7 +623,7 @@ class Pipeline:
             p0_dir = Path(str(po.pos_dir) + os.sep + [d for d in os.listdir(str(po.pos_dir)) if os.path.isdir(Path(po.pos_dir,d))][0])
             p0 = Placement(place_dir=p0_dir, position=po)
             fname = Path(str(p0.place_dir) + os.sep + "Holograms" + os.sep + str(self.timesteps[0]).zfill(5) + "_holo.tif")
-            dhm_image = DHMImage(fname, p0, focus = (self.cfg.get_config_setting('reconstruction_distance_low')+self.cfg.get_config_setting('reconstruction_distance_high'))/2)
+            dhm_image = DHMImage(self.cfg, fname, p0, focus = (self.cfg.get_config_setting('reconstruction_distance_low')+self.cfg.get_config_setting('reconstruction_distance_high'))/2)
             ph_image = np.angle(dhm_image.get_cplx_image())
             recon_corners = self._get_rectangle_coordinates(ph_image)
             po.recon_corners = recon_corners
